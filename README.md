@@ -73,3 +73,11 @@ Universal app coverage is a design requirement, not a validated guarantee. Apps 
 ## Landing page
 
 `landing/index.html` is the public Tapio landing page. `vercel.json` deploys only this static page; ADB, local state and the MCP server stay on the laptop. The demo links open localhost on the visitor’s computer.
+
+## Fast WhatsApp execution
+
+The MCP caller sets `allow_external_action: true` for an explicitly authorized send request; one call navigates, writes, submits and checks a new visible message bubble. An exact contact match is required, with accents/case normalized. A matching open chat is reused. Otherwise it opens WhatsApp and uses live semantic UI controls for search and exact contact selection. Search fields are focused and replaced before reading results. Contact selection, draft verification and the final result use live UI, never saved message coordinates. A fresh preview observation is reused immediately for the final action instead of dumping the same screen twice. No send attempt is automatically repeated.
+
+## Prompt demo
+
+The studio’s **Ask your agent** form accepts a request such as `Send a WhatsApp message to David Čečko: "Hello David, testing Tapio."`. Run invokes an actual MCP SDK client against the local server. Explicit send/post requests authorize final submission; explicit draft requests stop at preview. Common demo message syntax uses a fast interpreter; other requests use one Luna call to choose any available tool and bind parameters. This does not imply arbitrary apps are already supported.

@@ -1,0 +1,5 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {quickCall} from '../src/agent.mjs';import {demoTool} from '../src/demo.mjs';const tools=[demoTool('com.whatsapp'),demoTool('com.reddit.frontpage')];
+test('explicit prompt chooses a mapped MCP tool and preserves exact text',()=>{const call=quickCall('Send a WhatsApp message to David Čečko: "Hello David, testing Tapio."',tools);assert.equal(call.toolName,'com_whatsapp_send_message');assert.deepEqual(call.arguments,{recipient:'David Čečko',message:'Hello David, testing Tapio.',allow_external_action:true});});
+test('explicit draft requests cannot become sends',()=>assert.equal(quickCall('Draft a WhatsApp message to David Čečko: "Draft only."',tools).arguments.allow_external_action,false));
+test('missing exact content or unrelated prompts defer to the inexpensive interpreter',()=>{assert.equal(quickCall('Delete all messages',tools),null);assert.equal(quickCall('Publish a Reddit post',tools),null);});
+test('a requested testing message has a reusable contact argument',()=>assert.equal(quickCall('send a testing message to david cecko',tools).arguments.recipient,'david cecko'));

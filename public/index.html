@@ -9,20 +9,20 @@
   <h1>Your apps.<br><span>Your agent’s tools.</span></h1>
   <p class="intro">Describe what you want to do. The agent learns the app on your phone and creates tools you can call through MCP.</p>
   <ol class="journey"><li id="stage-map" class="active">1 · Map workflow</li><li id="stage-test">2 · Test it</li><li id="stage-connect">3 · Use through MCP</li></ol>
-  <form id="map-form" class="composer">
+  <section class="agent-panel"><div class="eyebrow">TRY YOUR MCP TOOLS</div><h2>Ask your agent</h2><form id="agent-form"><textarea id="agent-prompt" required placeholder='Send a WhatsApp message to David Čečko: "Hello David, testing Tapio."'>Send a WhatsApp message to David Čečko: "Hello David, testing Tapio."</textarea><div class="agent-footer"><span>Run performs the action you request on the phone.</span><button id="agent-run">Run ↗</button></div></form><div id="agent-result" role="status"></div></section><details class="mapping-settings"><summary>Set up another capability</summary><form id="map-form" class="composer">
     <div class="app-picker"><label for="package">Your apps</label><select id="package"><option value="com.whatsapp">WhatsApp</option></select></div>
     <label for="goal">What should the agent learn?</label>
     <textarea id="goal" required maxlength="4000">I want to send messages to specific contacts through MCP.</textarea>
     <label for="test-contact">Test context <span class="muted">· optional</span></label><input id="test-contact" type="text" placeholder="e.g. a contact name or a test community" maxlength="120">
     <label class="toggle"><input id="fast-demo" type="checkbox" checked> Fast demo · prepared WhatsApp & Reddit profiles</label><div class="composer-bottom"><button id="map-button" type="submit">Scan & build MCP</button></div>
-  </form>
-  <div id="run-summary" class="run-summary" role="status"><strong>Choose an app and describe one capability.</strong><p>We’ll map the workflow, suggest a test and check the result on your phone.</p></div>
+  </form></details>
+  <div id="run-summary" hidden class="run-summary" role="status"><strong>Choose an app and describe one capability.</strong><p>We’ll map the workflow, suggest a test and check the result on your phone.</p></div>
   <div class="run-heading"><h2>Activity</h2><button id="retry" class="secondary" hidden>Continue from this screen</button><button id="stop" class="danger" hidden>Stop run</button><span id="run-status" class="badge">Ready</span></div>
   <details class="technical"><summary>Agent activity</summary><div id="events" class="timeline"><div class="empty"><span class="empty-icon">⌘</span><strong>Start with one capability</strong><p>The agent will observe, act and check each screen. Mapping stops before external actions.</p></div></div>
   </details><details class="technical"><summary>Mapped screens</summary><div class="run-heading"><h2>Learned screens</h2><span id="screen-count" class="muted">0 screens</span></div>
   <div id="screens" class="screen-list"><p class="muted">Screens appear here after an exploration finishes.</p></div>
-  </details><div class="run-heading"><h2>Capabilities & tests</h2><button id="export" class="secondary" disabled>Export manifest</button></div>
-  <div id="tools" class="tool-list"><div class="tool-empty">A suggested test will appear here after mapping.</div></div>
+  </details><details class="technical"><summary>Available MCP tools & manual tests</summary><div class="run-heading"><h2>Available MCP tools</h2><button id="export" class="secondary" disabled>Export manifest</button></div>
+  <div id="tools" class="tool-list"><div class="tool-empty">A suggested test will appear here after mapping.</div></div></details>
 </section>
 <aside class="device-panel">
   <div class="device-heading"><div><div class="eyebrow">CONNECTED DEVICE</div><h2 id="device-name">Checking phone…</h2></div><span id="device-state" class="badge">USB</span></div>

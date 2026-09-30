@@ -12,13 +12,15 @@ class Navigation {
  async observe(name){this.s=await this.io.observe();if(this.s.package!==this.io.packageName)throw new Error('The phone switched apps. Return to '+demoApps[this.io.packageName]+'.');this.screens.push({name,id:this.s.id || String(this.screens.length),packageName:this.s.package,elements:this.s.nodes});return this.s;}
  find(predicate){return this.s.nodes.find(predicate);}
  async tap(predicate,name){let node=this.find(n=>n.clickable && predicate(n));if(!node){await this.observe(name);node=this.find(n=>n.clickable && predicate(n));}if(!node)throw new Error('Cannot find '+name+'. Check the phone, then retry.');this.io.event(name);await this.io.act({kind:'tap',targetId:node.id,settleMs:100},this.s);return this.observe(name);}
- async fill(predicate,text,name){const node=this.find(n=>n.editable && predicate(n));if(!node)throw new Error('Cannot find '+name+'.');this.io.event(name);await this.io.act({kind:'fill',targetId:node.id,text,settleMs:100},this.s);return this.observe(name);}
+ async fill(predicate,text,name){const node=this.find(n=>n.editable && predicate(n));if(!node)throw new Error('Cannot find '+name+'.');this.io.event(name);await this.io.act({kind:'fill',targetId:node.id,text,fast:true,settleMs:100},this.s);return this.observe(name);}
  async launch(){this.io.event('Opening '+demoApps[this.io.packageName]);await this.io.launch();await this.observe('App home');}
  async whatsapp(recipient){
   if(!this.find(n=>n.editable && /:id\/entry$/.test(n.resourceId))) {
    await this.tap(n=>/search|hledat|vyhled/i.test(label(n)+' '+n.resourceId),'Contact search');
    await this.fill(()=>true,recipient.normalize('NFD').replace(/\p{M}/gu,''),'Finding '+recipient);
-   await this.tap(n=>norm(label(n))===norm(recipient),'Opening '+recipient);
+   const matches=this.s.nodes.filter(n=>n.clickable && norm(label(n))===norm(recipient));
+   if(matches.length!==1)throw new Error(matches.length?'More than one contact matches. Choose a unique contact.':'No exact contact match found. Nothing sent.');
+   await this.tap(n=>n.id===matches[0].id,'Opening '+recipient);
   }
   if(!this.s.nodes.some(n=>norm(label(n))===norm(recipient)))throw new Error('The visible chat does not match '+recipient+'. Nothing sent.');
  }
@@ -40,10 +42,15 @@ export async function scanDemo(io){
  return {screens:nav.screens,tool:demoTool(io.packageName)};
 }
 export async function executeDemo(io,tool,args,allowEffect){
- const nav=new Navigation(io);await nav.launch();
+ const nav=new Navigation(io);
  if(tool.demoProfile==='whatsapp'){
-  await nav.whatsapp(args.recipient);await nav.fill(n=>/:id\/entry$/.test(n.resourceId),args.message,'Preparing the message');
+  const current=await io.observe();const sameChat=current.package===io.packageName && current.nodes.some(n=>n.editable && /:id\/entry$/.test(n.resourceId)) && current.nodes.some(n=>norm(label(n))===norm(args.recipient) && /:id\/(conversation_contact_name|title)$/.test(n.resourceId));
+  if(sameChat){nav.s=current;io.event('Using the open chat with '+args.recipient);}else await nav.launch();
+  await nav.whatsapp(args.recipient);
+  const draft=nav.find(n=>n.editable && /:id\/entry$/.test(n.resourceId));
+  if(draft.text!==args.message)await nav.fill(n=>/:id\/entry$/.test(n.resourceId),args.message,'Preparing the message');else io.event('Exact message draft is already ready');
  }else{
+  await nav.launch();
   const community=args.community.replace(/^r\//i,'').trim();if(!/^[a-z0-9_]{1,30}$/i.test(community))throw new Error('Enter a valid community name.');args.community=community;
   await nav.reddit(community);await nav.fill(n=>n.resourceId==='post_title_field',args.title,'Filling the title');
   await nav.tap(n=>/post body field|hlavni text|body/i.test(norm(label(n))),'Opening the body editor');

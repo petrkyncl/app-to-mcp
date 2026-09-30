@@ -59,13 +59,13 @@ export class Phone {
   async screenshot() { return this.run(['exec-out', 'screencap', '-p'], {encoding: 'buffer'}); }
   async inputContext(){return parseInputContext(await this.run(['shell','dumpsys','input_method']));}
   async snapshot() {
-    await this.run(['shell', 'uiautomator', 'dump', '/data/local/tmp/app-to-mcp-ui.xml']);
-    const xml = await this.run(['exec-out', 'cat', '/data/local/tmp/app-to-mcp-ui.xml']);
+    const xml = await this.run(['shell', 'uiautomator dump --compressed /data/local/tmp/app-to-mcp-ui.xml >/dev/null && cat /data/local/tmp/app-to-mcp-ui.xml']);
     const nodes = flattenUI(parser.parse(xml.slice(xml.indexOf('<?xml'))));
     const packageName=nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '';
     const inputContext=nodes.some(n=>n.editable && n.focused)?null:await this.inputContext();
-    if(inputContext?.packageName===packageName)this.visualFallback=true;
-    if(this.visualFallback)addVisualText(nodes,await recognizeText(await this.screenshot()),packageName);
+    this.visualFallbackApps ||= new Set();
+    if(inputContext?.packageName===packageName)this.visualFallbackApps.add(packageName);
+    if(this.visualFallbackApps.has(packageName))addVisualText(nodes,await recognizeText(await this.screenshot()),packageName);
     return {inputContext:inputContext?.packageName===packageName?inputContext:null,nodes, package: nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '', capturedAt: new Date().toISOString()};
   }
   async apps() {
@@ -76,11 +76,13 @@ export class Phone {
   }
   async launch(packageName) {
     if (!/^[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+$/.test(packageName)) throw new Error('Invalid Android package name');
-    const resolved = await this.run(['shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER',packageName]);
+    this.launcherCache ||= new Map();
+    const resolved = this.launcherCache.get(packageName) || await this.run(['shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER',packageName]);
     const component=resolved.split('\n').map(s=>s.trim()).find(s=>s.startsWith(packageName+'/'));
     if(!component || !/^[a-zA-Z0-9_./$]+$/.test(component))throw new Error('This app has no launcher activity.');
+    this.launcherCache.set(packageName,component);
     // A new task prevents Android from resuming a deeply nested activity stack.
-    await this.run(['shell','am','start','-S','-n',component,'-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-f','0x10008000']);
+    await this.run(['shell','am','start','-W','-S','-n',component,'-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-f','0x10008000']);
   }
   async act(action, snapshot) {
     if (action.kind === 'tap') {
@@ -92,6 +94,14 @@ export class Phone {
       // Single-quote the Android shell argument; execFile alone only protects the host shell.
       if(action.text.includes('%s')) throw new Error('Literal %s cannot be typed by Android input text. Use scrcpy for this text.');
       const text = action.text.replaceAll(' ', '%s');
+      if(action.kind==='fill' && action.fast){
+        const node=snapshot.nodes.find(n=>n.id===action.targetId && n.editable);if(!node)throw new Error('Select an editable input for fill.');
+        const commands=[];if(!node.focused)commands.push('input tap '+node.center.join(' '),'sleep 0.3');
+        if(node.text){commands.push('input keycombination 113 29','input keyevent 67');}
+        if(text)commands.push("input text '"+text.replaceAll("'", "'\\''")+"'");
+        if(commands.length)await this.run(['shell',commands.join(' && ')]);
+        await new Promise(r=>setTimeout(r,action.settleMs ??100));return;
+      }
       let eraseLength=0;let editorKey=null;
       if(action.kind==='fill_focused') {
         const current=await this.inputContext();const expected=snapshot.inputContext;
