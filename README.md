@@ -17,7 +17,7 @@ Environment options:
 - `ANDROID_SERIAL`: target from `adb devices -l` (current default is the connected demo phone).
 - `ADB`: path to ADB (current default is `/Users/Petr/Tools/platform-tools/adb`).
 - `CODEX_BIN`: path to the authenticated Codex CLI; defaults to `codex` on PATH.
-- `AGENT_MODEL`: optional Codex model override; omitted by default.
+- `AGENT_MODEL`: optional Codex model override; defaults to `gpt-6-luna` with low reasoning.
 - `AAPT2`: optional path to Android SDK aapt2; newest installed stable macOS build-tools is detected by default.
 - `PORT`: defaults to 4318.
 - `MCP_TOKEN`: optional fixed bearer token. Without it, each server start generates a fresh token.
@@ -35,7 +35,7 @@ Environment options:
 
 - `src/phone.mjs`: explicit per-device ADB bridge, screenshots, semantic UI nodes and fresh launcher tasks.
 - `src/app-labels.mjs`: extracts only APK manifest and resources to read actual labels with Android's aapt2. It does not copy whole application APKs.
-- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a screenshot, UI nodes, and a strict JSON output schema. It does not copy authentication tokens or scrape ChatGPT's browser UI.
+- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a compact list of meaningful UI elements and a strict JSON output schema. Screenshots are not sent on routine exploration steps. It does not copy authentication tokens or scrape ChatGPT's browser UI.
 - `src/server.mjs`: local web API, jobs, generated tool registry, and official MCP SDK Streamable HTTP transport.
 - `src/policy.mjs`: mapping/preview stops before sending; calls, purchases and deletion are rejected.
 
@@ -58,4 +58,4 @@ The planner smoke test uses synthetic data. The integration test reads the real 
 - Exploration is capped at 12 steps; execution at 24. Each step is a separate Codex invocation, so latency is noticeable.
 - The constrained executor has heuristic side-effect checks; this is a supervised hackathon prototype, not a hardened production agent for arbitrary apps.
 - The server listens only on loopback. Remote ChatGPT cannot connect to this local URL without a separately authorized hosting/tunnel setup.
-- No message has been sent during setup or verification.
+- Message sending must be explicitly authorized for each execution.

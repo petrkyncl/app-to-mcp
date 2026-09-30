@@ -6,8 +6,8 @@ import {randomBytes, randomUUID, createHash} from 'node:crypto';
 import {mkdir, readFile, writeFile, rename} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {Phone, exec} from './phone.mjs';
-import {Planner} from './planner.mjs';
+import {Phone, exec, compactUI} from './phone.mjs';
+import {Planner, agentModel} from './planner.mjs';
 import {assessAction,rebindTarget} from './policy.mjs';
 import {AppCatalog} from './app-labels.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -23,7 +23,7 @@ const jobs = new Map(); let activeJob = null; let latest = null;
 let queue = Promise.resolve();
 function locked(fn) {const result = queue.then(fn); queue = result.catch(()=>{}); return result;}
 function hash(snapshot) {return createHash('sha256').update(JSON.stringify(snapshot.nodes.filter(n=>!['com.android.systemui','com.samsung.android.honeyboard','com.google.android.inputmethod.latin'].includes(n.package)))).digest('hex').slice(0,16);}
-async function capture() {return locked(async () => {const snapshot = await phone.snapshot(); snapshot.id = hash(snapshot); const screenshot = await phone.screenshot(); latest = snapshot; return {snapshot,screenshot};});}
+async function capture(includeScreenshot=true) {return locked(async () => {const snapshot = await phone.snapshot(); snapshot.id = hash(snapshot); const screenshot = includeScreenshot ? await phone.screenshot() : null; latest = snapshot; return {snapshot,screenshot};});}
 async function persist() {await mkdir(path.dirname(storage),{recursive:true}); await writeFile(storage+'.tmp',JSON.stringify(state,null,2)); await rename(storage+'.tmp',storage);}
 function event(job, type, message, details = {}) {job.events.push({type,message,time:new Date().toISOString(),...details});}
 function createJob(mode, goal, packageName, allowSend = false) {
@@ -41,7 +41,8 @@ async function run(job) {
     for(let step=0; step < (job.mode === 'map' ? 12 : 24); step++) {
       if(job.cancelled) throw new Error('Stopped by user');
       event(job,'observe','Reading screen '+(step+1));
-      const {snapshot,screenshot} = await capture();
+      const {snapshot,screenshot} = await capture(false);
+      const compact=compactUI(snapshot);event(job,'observe',`${compact.elements.length} meaningful UI elements · ${JSON.stringify(compact).length} characters · ${agentModel}`);
       if (snapshot.package && snapshot.package !== job.packageName && !snapshot.package.includes('permissioncontroller')) {
         throw new Error('The foreground app changed. Return to the requested app and try again.');
       }
@@ -74,7 +75,7 @@ async function run(job) {
       }
       const applied=await locked(async()=>{
         const current = await phone.snapshot();
-        if(decision.kind==='tap') {
+        if(decision.kind==='tap' || decision.kind==='fill') {
           const rebound=rebindTarget(node,current.nodes);if(!rebound)return false;
           const verified=assessAction(decision,rebound,job.mode,job.allowSend);if(!verified.allowed)throw new Error(verified.reason);
           await phone.act({...decision,targetId:rebound.id},current);
@@ -86,7 +87,7 @@ async function run(job) {
         return true;
       });
       if(!applied){event(job,'observe','UI changed; observing again before acting');continue;}
-      history.push({screenName:decision.screenName,action:decision.kind,target:node ? {text:node.text,description:node.description,resourceId:node.resourceId}:null,text:decision.text,reasoning:decision.reasoning});
+      history.push({screenName:decision.screenName,action:decision.kind,target:node ? {label:node.label,text:node.text,description:node.description,resourceId:node.resourceId}:null,text:decision.text,reasoning:decision.reasoning});
     }
     job.status='blocked'; job.result='Step limit reached. Narrow the goal and retry.'; event(job,'blocked',job.result);
   } catch(error) {job.status=job.cancelled ? 'cancelled':'failed'; job.result=error.message; event(job,'error',error.message);}
@@ -115,7 +116,7 @@ app.use((req,res,next)=>{
 app.use(express.json({limit:'1mb'}));
 app.get('/api/session',async(req,res)=>{
   let auth; try {const result=await exec(process.env.CODEX_BIN || 'codex',['login','status'],{timeout:10000});auth=(result.stdout+'\n'+result.stderr).split('\n').find(line=>line.startsWith('Logged in')) || 'Codex sign-in available';} catch {auth='Codex is not authenticated. Run codex login.';}
-  res.json({token,serial:phone.serial,auth,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
+  res.json({token,serial:phone.serial,auth,model:agentModel,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
 });
 app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(toolSchema)}));
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));

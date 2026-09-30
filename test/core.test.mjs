@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {flattenUI, Phone} from '../src/phone.mjs';
+import {flattenUI, Phone,compactUI} from '../src/phone.mjs';
 import {assessAction,rebindTarget} from '../src/policy.mjs';
 test('nested UI hierarchy retains semantic selectors and valid centers',()=>{
  const nodes=flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',node:[{text:'Search',bounds:'[10,20][110,60]',clickable:'true','resource-id':'com.whatsapp:id/search'},{bounds:'[0,0][0,0]'}]}}});
@@ -22,6 +22,14 @@ test('semantic rebinding ignores coordinates but refuses ambiguous or changed ta
 test('fresh launch uses Android-supported NEW_TASK and CLEAR_TASK intent flags',async()=>{
  const phone=new Phone('test');const calls=[];phone.run=async args=>{calls.push(args);return calls.length===1?'com.whatsapp/.Main\n':'';};await phone.launch('com.whatsapp');
  assert.deepEqual(calls[1].slice(-2),['-f','0x10008000']);assert(calls[1].includes('-S'));assert(!calls[1].includes('--activity-new-task'));
+});
+test('compact observation labels clickable rows and omits layout, system chrome and duplicate child text',()=>{
+ const snapshot={package:'com.whatsapp',nodes:flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',package:'com.whatsapp',node:[{bounds:'[0,0][500,60]',package:'com.android.systemui',text:'15:00'},{bounds:'[0,60][500,200]',package:'com.whatsapp',clickable:'true',class:'View',node:{bounds:'[0,70][400,120]',package:'com.whatsapp',text:'David Čečko'}}]}}})};
+ const compact=compactUI(snapshot);assert.equal(compact.elements.length,1);assert.equal(compact.elements[0].label,'David Čečko');assert.deepEqual(compact.elements[0].actions,['tap']);assert(!JSON.stringify(compact).includes('bounds'));
+});
+test('fill focuses, selects all and replaces a field in one executor operation',async()=>{
+ const phone=new Phone('test');const calls=[];phone.run=async args=>calls.push(args);await phone.act({kind:'fill',targetId:'1',text:'David'},{nodes:[{id:'1',editable:true,center:[20,30]}]});
+ assert.deepEqual(calls[1],['shell','input','keycombination','113','29']);assert.deepEqual(calls[2],['shell','input','keyevent','67']);assert.deepEqual(calls[3],['shell',"input text 'David'"]);
 });
 test('text is quoted for the Android shell, without host command execution',async()=>{
  const phone=new Phone('test');let args;phone.run=async value=>{args=value;};

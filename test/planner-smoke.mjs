@@ -1,10 +1,10 @@
 import {spawn} from 'node:child_process';
 import {mkdir,writeFile,readFile} from 'node:fs/promises';
-import {decisionSchema} from '../src/planner.mjs';
+import {decisionSchema,agentModel} from '../src/planner.mjs';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 const dir=path.resolve('work/smoke');await mkdir(dir,{recursive:true});const schema=path.join(dir,'schema.json');const output=path.join(dir,'result.json');await writeFile(schema,JSON.stringify(decisionSchema));
-const child=spawn('codex',['exec','--ignore-user-config','--ephemeral','--skip-git-repo-check','--sandbox','read-only','-c','approval_policy="never"','--output-schema',schema,'--output-last-message',output,'-'],{cwd:dir,stdio:['pipe','ignore','pipe']});
+const child=spawn('codex',['exec','--ignore-user-config','--ephemeral','--skip-git-repo-check','--sandbox','read-only','-m',agentModel,'-c','model_reasoning_effort="low"','-c','approval_policy="never"','--output-schema',schema,'--output-last-message',output,'-'],{cwd:dir,stdio:['pipe','ignore','pipe']});
 let errors='';child.stderr.on('data',d=>errors=(errors+d).slice(-3000));const timer=setTimeout(()=>child.kill(),120000);
 child.stdin.end('You are testing a structured planning wrapper. Do not call any tools, read files or execute commands. Return kind done, screenName Synthetic test, reasoning Authentication and structured output verified, result wrapper_ok, sensitive false, empty tools array, direction down, empty text and targetId. This is a synthetic test with no phone data.');
 await new Promise((resolve,reject)=>{child.on('error',reject);child.on('close',code=>code===0?resolve():reject(new Error(errors)));}).finally(()=>clearTimeout(timer));const result=JSON.parse(await readFile(output,'utf8'));assert.equal(result.result,'wrapper_ok');assert.equal(result.kind,'done');console.log('PASS: actual ChatGPT-plan inference and structured planner response.');

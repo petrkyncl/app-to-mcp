@@ -6,19 +6,37 @@ const adb = process.env.ADB || '/Users/Petr/Tools/platform-tools/adb';
 const parser = new XMLParser({ignoreAttributes: false, attributeNamePrefix: ''});
 export function flattenUI(parsed) {
   const nodes = [];
-  function visit(value) {
+  function visit(value,parentId=null) {
     if (!value || typeof value !== 'object') return;
-    if (Array.isArray(value)) { value.forEach(visit); return; }
+    if (Array.isArray(value)) { value.forEach(child=>visit(child,parentId)); return; }
     if (value.bounds) {
       const b = String(value.bounds).match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
       if (b && Number(b[3]) > Number(b[1]) && Number(b[4]) > Number(b[2])) {
-      nodes.push({id: String(nodes.length), text: String(value.text || ''), description: String(value['content-desc'] || ''), resourceId: String(value['resource-id'] || ''), class: String(value.class || ''), package: String(value.package || ''), clickable: value.clickable === 'true', focused: value.focused === 'true', editable: /EditText/.test(value.class || ''), bounds: b.slice(1).map(Number), center: [Math.round((+b[1] + +b[3])/2), Math.round((+b[2] + +b[4])/2)]});
+      const id=String(nodes.length);
+      nodes.push({id,parentId, text: String(value.text || ''), description: String(value['content-desc'] || ''), resourceId: String(value['resource-id'] || ''), class: String(value.class || ''), package: String(value.package || ''), clickable: value.clickable === 'true', focused: value.focused === 'true', editable: /EditText/.test(value.class || ''), bounds: b.slice(1).map(Number), center: [Math.round((+b[1] + +b[3])/2), Math.round((+b[2] + +b[4])/2)]});
+      parentId=id;
       }
     }
-    if (value.hierarchy) visit(value.hierarchy);
-    if (value.node) visit(value.node);
+    if (value.hierarchy) visit(value.hierarchy,parentId);
+    if (value.node) visit(value.node,parentId);
   }
-  visit(parsed); return nodes;
+  visit(parsed);
+  for(const node of nodes){
+    node.label=node.text || node.description;
+    if(!node.label && node.clickable){const descendants=nodes.filter(child=>{let parent=child.parentId;while(parent!==null){if(parent===node.id)return true;parent=nodes[Number(parent)]?.parentId??null;}return false;});node.label=descendants.find(n=>n.text)?.text || descendants.find(n=>n.description)?.description || '';}
+  }
+  return nodes;
+}
+export function compactUI(snapshot) {
+  const nodes=snapshot.nodes;const byId=new Map(nodes.map(n=>[n.id,n]));
+  const useful=nodes.filter(n=>{
+    if(['com.android.systemui','com.samsung.android.honeyboard','com.google.android.inputmethod.latin'].includes(n.package))return false;
+    if(n.clickable || n.editable)return Boolean(n.label || n.resourceId || n.editable);
+    if(!n.text && !n.description)return false;
+    let parent=byId.get(n.parentId);while(parent){if(parent.clickable)return false;parent=byId.get(parent.parentId);}
+    return true;
+  });
+  return {app:snapshot.package,elements:useful.slice(0,65).map(n=>({id:n.id,role:n.editable?'input':n.clickable?'button':'text',label:(n.label || n.resourceId.split('/').at(-1) || 'Input').replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,110),...(n.editable?{value:n.text.replace(/[\u200b-\u200f\ufeff]/g,''),actions:['fill','tap']} : n.clickable?{actions:['tap']} : {})})),truncated:useful.length>65};
 }
 export class Phone {
   constructor(serial) { this.serial = serial; }
@@ -56,11 +74,17 @@ export class Phone {
       const node = snapshot.nodes.find(n => n.id === action.targetId);
       if (!node) throw new Error('Element no longer exists. Capture the screen again.');
       await this.run(['shell', 'input', 'tap', ...node.center.map(String)]);
-    } else if (action.kind === 'type') {
+    } else if (action.kind === 'type' || action.kind === 'fill') {
       if (!/^[\x20-\x7E]{1,2000}$/.test(action.text)) throw new Error('This prototype currently types ASCII text only. Use scrcpy for accented text.');
       // Single-quote the Android shell argument; execFile alone only protects the host shell.
       if(action.text.includes('%s')) throw new Error('Literal %s cannot be typed by Android input text. Use scrcpy for this text.');
       const text = action.text.replaceAll(' ', '%s');
+      if(action.kind==='fill') {
+        const node=snapshot.nodes.find(n=>n.id===action.targetId && n.editable);if(!node)throw new Error('Select an editable input for fill.');
+        await this.run(['shell','input','tap',...node.center.map(String)]);
+        await this.run(['shell','input','keycombination','113','29']);
+        await this.run(['shell','input','keyevent','67']);
+      }
       await this.run(['shell', 'input text ' + "'" + text.replaceAll("'", "'\\''") + "'"]);
     } else if (action.kind === 'back') await this.run(['shell', 'input', 'keyevent', '4']);
     else if (action.kind === 'scroll') {
