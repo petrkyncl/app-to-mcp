@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App to MCP · Phone agent studio</title><meta name="description" content="Teach an agent your Android app and turn observed workflows into MCP tools."><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><a class="brand" href="/" aria-label="App to MCP home"><span class="mark">a<span>↳</span></span> App to MCP <small>PHONE AGENT STUDIO</small></a><button id="connect" class="secondary">Connect MCP</button></header>
+<main>
+<section class="workspace">
+  <div class="eyebrow">FROM APP TO CAPABILITY</div>
+  <h1>Your apps.<br><span>Your agent’s tools.</span></h1>
+  <p class="intro">Describe what you want to do. The agent learns the app on your phone and creates tools you can call through MCP.</p>
+  <form id="map-form" class="composer">
+    <label for="goal">What should the agent learn?</label>
+    <textarea id="goal" required maxlength="4000">I want to control WhatsApp through MCP. Learn how to find a contact and prepare a message. Stop before sending anything.</textarea>
+    <div class="composer-bottom"><div class="app-picker"><label for="package">Android app</label><select id="package"><option value="com.whatsapp">WhatsApp · com.whatsapp</option></select></div><button id="map-button" type="submit">Explore & build tools</button></div>
+  </form>
+  <div class="run-heading"><h2>Exploration</h2><button id="stop" class="danger" hidden>Stop run</button><span id="run-status" class="badge">Ready</span></div>
+  <div id="events" class="timeline"><div class="empty"><span class="empty-icon">⌘</span><strong>Start with one capability</strong><p>The agent will observe, act and check each screen. Mapping stops before external actions.</p></div></div>
+  <div class="run-heading"><h2>Learned screens</h2><span id="screen-count" class="muted">0 screens</span></div>
+  <div id="screens" class="screen-list"><p class="muted">Screens appear here after an exploration finishes.</p></div>
+  <div class="run-heading"><h2>MCP tools</h2><button id="export" class="secondary" disabled>Export manifest</button></div>
+  <div id="tools" class="tool-list"><div class="tool-empty">Your first tool is one exploration away.</div></div>
+</section>
+<aside class="device-panel">
+  <div class="device-heading"><div><div class="eyebrow">CONNECTED DEVICE</div><h2 id="device-name">Checking phone…</h2></div><span id="device-state" class="badge">USB</span></div>
+  <div class="phone"><img id="phone-screen" alt="Live screenshot of your connected Android phone"><div id="phone-placeholder">Waiting for the phone</div></div>
+  <div class="device-controls"><button id="refresh" class="secondary">Refresh screen</button><label class="toggle"><input id="live" type="checkbox" checked> Live view</label></div>
+  <details class="inspect"><summary>Inspect UI elements</summary><button id="inspect" class="secondary">Read UI</button><p class="muted">Tap a listed element to interact with the phone.</p><div id="nodes"></div></details>
+  <div class="model-box"><span class="model-icon">✳</span><div><strong>ChatGPT plan</strong><p id="auth-state">Checking Codex sign-in…</p></div></div>
+  <p class="device-note">Runs locally on this Mac. Screen observations go to the planner when you start a run.</p>
+</aside>
+</main>
+<dialog id="connect-dialog"><div class="dialog-heading"><h2>Connect your agent</h2><button id="close-dialog" class="secondary" aria-label="Close">Close</button></div><p>Use this local Streamable HTTP endpoint in an MCP client on this Mac.</p><label>MCP endpoint</label><code id="endpoint"></code><label>Client configuration</label><pre id="config"></pre><button id="copy-config">Copy configuration</button><p class="muted">The token belongs to this server session. Restarting the server creates a new token unless MCP_TOKEN is set.</p></dialog>
+<div id="toast" role="status" hidden></div>
+<script type="module" src="app.js"></script>
+</body></html>

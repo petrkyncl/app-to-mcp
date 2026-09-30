@@ -1,0 +1,16 @@
+import assert from 'node:assert/strict';
+import {Client} from '@modelcontextprotocol/sdk/client/index.js';
+import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+const base='http://127.0.0.1:4318';
+const session=await (await fetch(base+'/api/session')).json();
+assert.match(session.auth,/Logged in using ChatGPT/);
+assert.equal((await fetch(base+'/api/map',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})})).status,401);
+assert.equal((await fetch(base+'/api/status',{headers:{Origin:'https://untrusted.example'}})).status,403);
+assert.equal((await fetch(base+'/mcp',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
+const client=new Client({name:'app-to-mcp-smoke',version:'1.0.0'});
+await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+session.token}}}));
+const tools=await client.listTools();assert(tools.tools.some(t=>t.name==='android_observe'));
+const result=await client.callTool({name:'android_observe',arguments:{}});assert.equal(result.isError,undefined);
+const snapshot=JSON.parse(result.content.find(c=>c.type==='text').text);assert(snapshot.nodes.length>0);
+assert(result.content.some(c=>c.type==='image' && c.mimeType==='image/png'));
+await client.close();console.log('PASS: ChatGPT auth, request protections, SDK handshake, MCP tool listing, real phone UI + screenshot.');
