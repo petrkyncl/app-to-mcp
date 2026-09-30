@@ -143,6 +143,7 @@ app.get('/api/session',async(req,res)=>{
   let auth; try {const result=await exec(process.env.CODEX_BIN || 'codex',['login','status'],{timeout:10000});auth=(result.stdout+'\n'+result.stderr).split('\n').find(line=>line.startsWith('Logged in')) || 'Codex sign-in available';} catch {auth='Codex is not authenticated. Run codex login.';}
   res.json({token,serial:phone.serial,auth,model:agentModel,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
 });
+app.get('/api/devices',async(req,res)=>res.json({devices:await phone.devices()}));
 app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),test:suggestedTest(t)}))}));
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
