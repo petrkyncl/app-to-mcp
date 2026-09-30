@@ -1,0 +1,12 @@
+.git/
+work/
+node_modules/
+public/
+src/
+test/
+.env
+*.log
+package.json
+package-lock.json
+README.md
+dist/

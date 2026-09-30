@@ -10,6 +10,7 @@ import {Phone, exec, compactUI} from './phone.mjs';
 import {Planner, agentModel} from './planner.mjs';
 import {assessAction,rebindTarget} from './policy.mjs';
 import {suggestedTest,completionEvidence,beforeEffect,finalActionMatches,validateContract,repeatedAction} from './workflow.mjs';
+import {demoApps,scanDemo,executeDemo} from './demo.mjs';
 import {AppCatalog} from './app-labels.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT || 4318);
@@ -27,10 +28,10 @@ function hash(snapshot) {return createHash('sha256').update(JSON.stringify(snaps
 async function capture(includeScreenshot=true) {return locked(async () => {const snapshot = await phone.snapshot(); snapshot.id = hash(snapshot); const screenshot = includeScreenshot ? await phone.screenshot() : null; latest = snapshot; return {snapshot,screenshot};});}
 async function persist() {await mkdir(path.dirname(storage),{recursive:true}); await writeFile(storage+'.tmp',JSON.stringify(state,null,2)); await rename(storage+'.tmp',storage);}
 function event(job, type, message, details = {}) {job.events.push({type,message,time:new Date().toISOString(),...details});}
-function createJob(mode, goal, packageName, allowSend = false, arguments_ = {}, toolName = null, checkpoint = null) {
+function createJob(mode, goal, packageName, allowSend = false, arguments_ = {}, toolName = null, checkpoint = null, fastDemo = false) {
   if (activeJob) throw new Error('Phone is busy. Stop or finish the current run first.');
   if (!goal?.trim() || goal.length > 4000) throw new Error('Enter a goal between 1 and 4000 characters.');
-  const job = {id:randomUUID(), mode, goal, packageName, allowSend, arguments:arguments_, toolName, checkpoint, status:'running', events:[], cancelled:false, result:''};
+  const job = {id:randomUUID(), mode, goal, packageName, allowSend, arguments:arguments_, toolName, checkpoint, fastDemo, status:'running', events:[], cancelled:false, result:''};
   jobs.set(job.id,job); activeJob = job;
   job.promise = run(job).finally(()=>{if(activeJob === job) activeJob = null;}); return job;
 }
@@ -38,6 +39,7 @@ async function run(job) {
   const capability=state.tools.find(t=>t.name===job.toolName);
   const screens = [...(job.checkpoint?.screens || [])]; const history = [...(job.checkpoint?.history || [])];job.screens=screens;job.history=history; const map = state.maps.find(m=>m.packageName === job.packageName);
   try {
+    if((job.mode==='map' && job.fastDemo && demoApps[job.packageName]) || (job.mode==='execute' && capability?.demoProfile)){await runDemo(job,capability);return;}
     if(job.checkpoint)event(job,'start','Continuing from the current screen');else {event(job,'start','Launching the app from its main activity with a fresh task');await locked(()=>phone.launch(job.packageName));await new Promise(r=>setTimeout(r,1200));}
     for(let step=0; step < (job.mode === 'map' ? 12 : 24); step++) {
       if(job.cancelled) throw new Error('Stopped by user');
@@ -121,6 +123,21 @@ async function run(job) {
     job.status='blocked'; job.result='Step limit reached. Narrow the goal and retry.'; event(job,'blocked',job.result);
   } catch(error) {job.status=job.cancelled ? 'cancelled':'failed'; job.result=error.message; event(job,'error',error.message);}
 }
+async function runDemo(job,tool){
+ const io={packageName:job.packageName,event:message=>event(job,'scan',message),launch:()=>locked(()=>phone.launch(job.packageName)),observe:async()=>{if(job.cancelled)throw new Error('Stopped by user');const {snapshot}=await capture(false);return snapshot;},act:(action,snapshot)=>locked(()=>phone.act(action,snapshot)),verify:(snapshot,phase)=>completionEvidence(job,snapshot,tool,phase),submit:async(action,snapshot,node)=>{
+  if(!job.allowSend || job.effectAttempt)throw new Error('Final action is not authorized or was already attempted.');
+  const current=await locked(()=>phone.snapshot());const rebound=rebindTarget(node,current.nodes);if(!rebound)throw new Error('Final control changed. Nothing submitted.');
+  const ready=completionEvidence(job,current,tool,'preview');if(!ready.ok)throw new Error(ready.reason);
+  job.effectAttempt=beforeEffect(job,current,tool);await locked(()=>phone.act({...action,targetId:rebound.id},current));
+ }};
+ if(job.mode==='map'){
+  const found=await scanDemo(io);const mapped={id:randomUUID(),packageName:job.packageName,goal:job.goal,screens:found.screens,createdAt:new Date().toISOString(),demoProfile:true};validateContract(found.tool);found.tool.mapId=mapped.id;
+  state.maps=[...state.maps.filter(m=>m.packageName!==job.packageName),mapped];state.tools=[...state.tools.filter(t=>t.packageName!==job.packageName),found.tool];await persist();job.result='Demo profile ready. MCP tool available; try the proposed test.';
+ }else{
+  const result=await executeDemo(io,tool,job.arguments,job.allowSend);job.validation=result.status;job.result=result.result;tool.validation={status:result.status,at:new Date().toISOString(),arguments:job.arguments,result:job.result};await persist();
+ }
+ job.status='completed';event(job,'complete',job.result);
+}
 function publicJob(job) {return job && {id:job.id,mode:job.mode,goal:job.goal,status:job.status,events:job.events,result:job.result,validation:job.validation,canResume:['failed','blocked','cancelled'].includes(job.status) && !job.effectAttempt};}
 function toolSchema(tool) {
   const properties = Object.fromEntries(tool.parameters.map(p=>[p.name,{type:'string',description:p.description}]));
@@ -148,13 +165,13 @@ app.get('/api/session',async(req,res)=>{
   res.json({token,serial:phone.serial,auth,model:agentModel,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
 });
 app.get('/api/devices',async(req,res)=>res.json({devices:await phone.devices()}));
-app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),lastJob:publicJob([...jobs.values()].at(-1)),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),test:suggestedTest(t)}))}));
+app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),lastJob:publicJob([...jobs.values()].at(-1)),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),displayName:t.displayName,demoProfile:t.demoProfile,test:suggestedTest(t)}))}));
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
 app.get('/api/jobs/:id',(req,res)=>{const job=jobs.get(req.params.id); if(!job)return res.status(404).json({error:'Unknown run'});res.json(publicJob(job));});
 app.post('/api/launch',async(req,res)=>{if(activeJob)throw new Error('Phone is busy');await locked(()=>phone.launch(req.body.packageName));res.json({ok:true});});
-app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName,false,{},null,req.body.continueFromCurrent===true?{screens:[],history:[],finalize:req.body.finalize===true}:null))));
+app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName,false,{},null,req.body.continueFromCurrent===true?{screens:[],history:[],finalize:req.body.finalize===true}:null,req.body.fastDemo!==false))));
 app.post('/api/execute',(req,res)=>{
   const tool=state.tools.find(t=>t.name === req.body.name);if(!tool)throw new Error('Unknown MCP tool');validateContract(tool);
   const args=req.body.arguments || {};res.json(publicJob(createJob('execute',instantiate(tool,args),tool.packageName,args.allow_external_action === true,args,tool.name)));
@@ -167,11 +184,11 @@ app.post('/api/action',async(req,res)=>{
 });
 app.post('/mcp',async(req,res)=>{
   const server=new Server({name:'app-to-mcp',version:'0.1.0'},{capabilities:{tools:{}}});
-  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[{name:'android_observe',description:'Read the current UI of the connected Android device.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true}},...state.tools.filter(t=>t.validation?.status==='verified').map(toolSchema)]}));
+  server.setRequestHandler(ListToolsRequestSchema,async()=>({tools:[{name:'android_observe',description:'Read the current UI of the connected Android device.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true}},...state.tools.filter(t=>['verified','demo_ready'].includes(t.validation?.status) || t.demoProfile).map(toolSchema)]}));
   server.setRequestHandler(CallToolRequestSchema,async request=>{
     try {
       if(request.params.name === 'android_observe'){const {snapshot,screenshot}=await capture();return {content:[{type:'text',text:JSON.stringify(snapshot)},{type:'image',data:screenshot.toString('base64'),mimeType:'image/png'}]};}
-      const tool=state.tools.find(t=>t.name === request.params.name);if(!tool)throw new Error('Unknown tool');validateContract(tool);if(tool.validation?.status!=='verified')throw new Error('Test this workflow in the studio before using it through MCP.');
+      const tool=state.tools.find(t=>t.name === request.params.name);if(!tool)throw new Error('Unknown tool');validateContract(tool);if(tool.validation?.status!=='verified' && !tool.demoProfile)throw new Error('Test this workflow in the studio before using it through MCP.');
       const args=request.params.arguments || {};const job=createJob('execute',instantiate(tool,args),tool.packageName,args.allow_external_action === true,args,tool.name);await job.promise;
       return {content:[{type:'text',text:JSON.stringify(publicJob(job))}],isError:job.status !== 'completed'};
     } catch(error) {return {content:[{type:'text',text:error.message}],isError:true};}

@@ -1,8 +1,8 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>App to MCP · Phone agent studio</title><meta name="description" content="Teach an agent your Android app and turn observed workflows into MCP tools."><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Tapio by MationX · Phone agent studio</title><meta name="description" content="Teach an agent your Android app and turn observed workflows into MCP tools."><link rel="icon" href="favicon.svg" type="image/svg+xml"><link rel="stylesheet" href="style.css"></head>
 <body>
-<header><a class="brand" href="/" aria-label="App to MCP home"><span class="mark">a<span>↳</span></span> App to MCP <small>PHONE AGENT STUDIO</small></a><button id="connect" class="secondary">Connect MCP</button></header>
+<header><a class="brand" href="/" aria-label="Tapio home"><span class="mark">a<span>↳</span></span> Tapio <small>BY MATIONX</small></a><button id="connect" class="secondary">Connect MCP</button></header>
 <main>
 <section class="workspace">
   <div class="eyebrow">FROM APP TO CAPABILITY</div>
@@ -14,7 +14,7 @@
     <label for="goal">What should the agent learn?</label>
     <textarea id="goal" required maxlength="4000">I want to send messages to specific contacts through MCP.</textarea>
     <label for="test-contact">Test context <span class="muted">· optional</span></label><input id="test-contact" type="text" placeholder="e.g. a contact name or a test community" maxlength="120">
-    <div class="composer-bottom"><button id="map-button" type="submit">Map workflow</button></div>
+    <label class="toggle"><input id="fast-demo" type="checkbox" checked> Fast demo · prepared WhatsApp & Reddit profiles</label><div class="composer-bottom"><button id="map-button" type="submit">Scan & build MCP</button></div>
   </form>
   <div id="run-summary" class="run-summary" role="status"><strong>Choose an app and describe one capability.</strong><p>We’ll map the workflow, suggest a test and check the result on your phone.</p></div>
   <div class="run-heading"><h2>Activity</h2><button id="retry" class="secondary" hidden>Continue from this screen</button><button id="stop" class="danger" hidden>Stop run</button><span id="run-status" class="badge">Ready</span></div>

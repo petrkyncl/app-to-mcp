@@ -1,4 +1,4 @@
-# App to MCP
+# Tapio by MationX
 
 Local hackathon prototype: describe an Android capability, let a ChatGPT-backed planner explore the app over USB ADB, then call the generated MCP tools.
 
@@ -26,10 +26,10 @@ Environment options:
 
 1. Select an app by its actual application label. Only user-installed packages with launcher activities are eligible. Names load in the background and are cached locally.
 2. Describe a concrete capability, including optional test context (a contact, community, destination or other input).
-3. Click **Map workflow**. Each run starts the app through its MAIN/LAUNCHER activity with a cleared task, observes the real UI, then asks Codex for one constrained action. An app can still restore its own saved navigation; the planner must inspect the starting screen.
+3. Leave **Fast demo** enabled for WhatsApp and Reddit: prepared profiles navigate real screens and immediately expose MCP tools. Preview tests fill real drafts; sending/publishing still requires explicit authorization. Disable this option for experimental general AI exploration. Click **Scan & build MCP**. Each run starts the app through its MAIN/LAUNCHER activity with a cleared task, observes the real UI, then asks Codex for one constrained action. An app can still restore its own saved navigation; the planner must inspect the starting screen.
 4. Review learned screens and generated MCP tools.
 5. Review the proposed test parameters and expected outcome. **Check draft** verifies the inputs. **Run test & verify** shows the exact capability and parameters for confirmation, runs the test and checks the workflow’s observable completion conditions. It does not claim delivery.
-6. Only tools that passed a real test appear in MCP discovery. **Connect MCP** displays the endpoint and bearer-token configuration for a client running on this Mac. Refresh the client's tool list after mapping.
+6. Prepared demo profiles and tools that passed a real test appear in MCP discovery. **Connect MCP** displays the endpoint and bearer-token configuration for a client running on this Mac. Refresh the client's tool list after mapping.
 
 ## Architecture
 
@@ -66,6 +66,10 @@ Workflow validation is app-independent. Each mapped capability defines variable 
 
 ## Product contract
 
-The user selects an installed app by name and describes a capability in ordinary language. The same exploration engine must discover the workflow, variable inputs, final action and observable result across apps; WhatsApp and Reddit are examples, not special integrations. Mapping proposes a concrete test. The studio distinguishes mapped, prepared and verified capabilities and only verified ones are discoverable through MCP. Never silently reduce “send a message” or “publish a post” to a draft-only capability. Use the low-cost Luna planner by default; keep observations compact and expose direct fill/tap actions and focused-editor replacement.
+The user selects an installed app by name and describes a capability in ordinary language. The same exploration engine must discover the workflow, variable inputs, final action and observable result across apps; WhatsApp and Reddit are examples, not special integrations. Mapping proposes a concrete test. The studio distinguishes mapped, prepared and verified capabilities and exposes prepared demo profiles alongside verified tools through MCP. Never silently reduce “send a message” or “publish a post” to a draft-only capability. Use the low-cost Luna planner by default; keep observations compact and expose direct fill/tap actions and focused-editor replacement.
 
 Universal app coverage is a design requirement, not a validated guarantee. Apps with inaccessible editors, invisible result states, login requirements or unsupported text input require further capability work; failed tests must remain visible.
+
+## Landing page
+
+`landing/index.html` is the public Tapio landing page. `vercel.json` deploys only this static page; ADB, local state and the MCP server stay on the laptop. The demo links open localhost on the visitor’s computer.

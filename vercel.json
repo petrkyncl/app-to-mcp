@@ -1,0 +1,1 @@
+{"buildCommand":"mkdir -p dist && cp landing/index.html dist/index.html","outputDirectory":"dist","framework":null}

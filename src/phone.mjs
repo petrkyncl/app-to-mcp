@@ -117,6 +117,6 @@ export class Phone {
       const [start, end] = action.direction === 'up' ? [.3, .75] : [.75, .3];
       await this.run(['shell', 'input', 'swipe', String(Math.round(width/2)), String(Math.round(height*start)), String(Math.round(width/2)), String(Math.round(height*end)), '450']);
     } else if (action.kind !== 'wait') throw new Error('Unsupported phone action');
-    await new Promise(resolve => setTimeout(resolve, 700));
+    await new Promise(resolve => setTimeout(resolve, action.settleMs ?? 700));
   }
 }

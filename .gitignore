@@ -3,3 +3,6 @@ work/
 .env
 .DS_Store
 *.log
+.vercel
+
+dist/
