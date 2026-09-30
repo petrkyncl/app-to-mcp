@@ -49,8 +49,10 @@ async function run(job) {
         throw new Error('The foreground app changed. Return to the requested app and try again.');
       }
       event(job,'thinking','Agent is choosing the next step');
-      const decision = await planner.decide({mode:job.mode.toUpperCase(),goal:job.goal,snapshot,screenshot,history,map:map || screens,allowSend:job.allowSend,packageName:job.packageName});
+      const finalize=job.mode==='map' && (job.checkpoint?.finalize || step>=8);
+      const decision = await planner.decide({mode:job.mode.toUpperCase(),goal:job.goal,snapshot,screenshot,history,map:map || screens,allowSend:job.allowSend,packageName:job.packageName,finalize});
       if(job.cancelled) throw new Error('Stopped by user');
+      if(finalize && !['done','blocked'].includes(decision.kind))throw new Error('Mapping needs a capability definition. Continue from this screen to refine it.');
       const screen = {name:decision.screenName, id:snapshot.id, packageName:snapshot.package, elements:snapshot.nodes.filter(n=>n.text || n.description || n.clickable || n.editable)};
       if(!screens.some(s=>s.id === screen.id)) screens.push(screen);
       event(job,'decision',decision.reasoning,{action:decision.kind,screenName:decision.screenName});
@@ -152,7 +154,7 @@ app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.scre
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
 app.get('/api/jobs/:id',(req,res)=>{const job=jobs.get(req.params.id); if(!job)return res.status(404).json({error:'Unknown run'});res.json(publicJob(job));});
 app.post('/api/launch',async(req,res)=>{if(activeJob)throw new Error('Phone is busy');await locked(()=>phone.launch(req.body.packageName));res.json({ok:true});});
-app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName,false,{},null,req.body.continueFromCurrent===true?{screens:[],history:[]}:null))));
+app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName,false,{},null,req.body.continueFromCurrent===true?{screens:[],history:[],finalize:req.body.finalize===true}:null))));
 app.post('/api/execute',(req,res)=>{
   const tool=state.tools.find(t=>t.name === req.body.name);if(!tool)throw new Error('Unknown MCP tool');validateContract(tool);
   const args=req.body.arguments || {};res.json(publicJob(createJob('execute',instantiate(tool,args),tool.packageName,args.allow_external_action === true,args,tool.name)));

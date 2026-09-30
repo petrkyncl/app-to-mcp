@@ -92,18 +92,24 @@ export class Phone {
       // Single-quote the Android shell argument; execFile alone only protects the host shell.
       if(action.text.includes('%s')) throw new Error('Literal %s cannot be typed by Android input text. Use scrcpy for this text.');
       const text = action.text.replaceAll(' ', '%s');
+      let eraseLength=0;let editorKey=null;
       if(action.kind==='fill_focused') {
         const current=await this.inputContext();const expected=snapshot.inputContext;
         if(!expected || !current || expected.packageName!==snapshot.package || current.packageName!==expected.packageName || current.fieldId!==expected.fieldId)throw new Error('The focused editor changed. Observe again before entering text.');
+        editorKey=current.packageName+':'+current.fieldId;
+        this.editorLengths ||= new Map();eraseLength=this.editorLengths.get(editorKey) ?? snapshot.nodes.filter(n=>n.source==='local-ocr').reduce((sum,n)=>sum+n.text.length,0);
         await this.run(['shell','input','keycombination','113','29']);await this.run(['shell','input','keyevent','67']);
       }
       if(action.kind==='fill') {
         const node=snapshot.nodes.find(n=>n.id===action.targetId && n.editable);if(!node)throw new Error('Select an editable input for fill.');
+        eraseLength=node.text?.length || 0;
         await this.run(['shell','input','tap',...node.center.map(String)]);
         await this.run(['shell','input','keycombination','113','29']);
         await this.run(['shell','input','keyevent','67']);
       }
+      if(eraseLength)await this.run(['shell','input','keyevent','123',...Array(Math.min(eraseLength,2000)).fill('67')]);
       if(text)await this.run(['shell', 'input text ' + "'" + text.replaceAll("'", "'\\''") + "'"]);
+      if(editorKey)this.editorLengths.set(editorKey,action.text.length);
     } else if (action.kind === 'back') await this.run(['shell', 'input', 'keyevent', '4']);
     else if (action.kind === 'scroll') {
       const width = Math.max(...snapshot.nodes.map(n => n.bounds[2]), 500);
