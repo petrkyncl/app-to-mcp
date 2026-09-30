@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {flattenUI, Phone,compactUI} from '../src/phone.mjs';
+import {flattenUI, Phone,compactUI,parseInputContext} from '../src/phone.mjs';
 import {assessAction,rebindTarget} from '../src/policy.mjs';
 test('nested UI hierarchy retains semantic selectors and valid centers',()=>{
  const nodes=flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',node:[{text:'Search',bounds:'[10,20][110,60]',clickable:'true','resource-id':'com.whatsapp:id/search'},{bounds:'[0,0][0,0]'}]}}});
@@ -48,3 +48,6 @@ test('create-post navigation is allowed while the final Post action needs a mapp
 test('fill can clear a draft without typing or submitting it',async()=>{const phone=new Phone('test');const calls=[];phone.run=async args=>calls.push(args);await phone.act({kind:'fill',targetId:'1',text:''},{nodes:[{id:'1',editable:true,center:[20,30]}]});assert.equal(calls.length,3);assert.deepEqual(calls[2],['shell','input','keyevent','67']);});
 
 test('unlabelled clickable wrappers inherit an informative child resource ID',()=>{const nodes=flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',package:'test.app',node:{bounds:'[0,100][500,200]',clickable:'true',package:'test.app',node:{bounds:'[0,100][500,200]','resource-id':'post_body_field',package:'test.app'}}}}});const ui=compactUI({package:'test.app',nodes});assert(ui.elements.some(n=>n.label==='post body field' && n.actions.includes('tap')));});
+
+test('custom editor metadata provides a generic focused input without exposing its text',()=>{const value='curEditorInfo:\n inputType=0x24001 imeOptions=0x0\n hintText=Body label=null\n packageName=test.app fieldId=42 fieldName=null\n hintLocales=null';assert.deepEqual(parseInputContext(value),{packageName:'test.app',fieldId:'42',inputType:'0x24001',label:'Body'});assert.equal(parseInputContext(value.replace('0x24001','0x0')),null);});
+test('focused-editor replacement checks app and field identity before typing',async()=>{const phone=new Phone('test');const context={packageName:'test.app',fieldId:'42'};const calls=[];phone.inputContext=async()=>context;phone.run=async a=>calls.push(a);await phone.act({kind:'fill_focused',text:'Draft only'},{package:'test.app',inputContext:context,nodes:[]});assert.equal(calls.length,3);await assert.rejects(()=>phone.act({kind:'fill_focused',text:'Draft only'},{package:'other.app',inputContext:context,nodes:[]}),/editor changed/);assert.equal(calls.length,3);});

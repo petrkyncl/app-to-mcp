@@ -27,19 +27,18 @@ function hash(snapshot) {return createHash('sha256').update(JSON.stringify(snaps
 async function capture(includeScreenshot=true) {return locked(async () => {const snapshot = await phone.snapshot(); snapshot.id = hash(snapshot); const screenshot = includeScreenshot ? await phone.screenshot() : null; latest = snapshot; return {snapshot,screenshot};});}
 async function persist() {await mkdir(path.dirname(storage),{recursive:true}); await writeFile(storage+'.tmp',JSON.stringify(state,null,2)); await rename(storage+'.tmp',storage);}
 function event(job, type, message, details = {}) {job.events.push({type,message,time:new Date().toISOString(),...details});}
-function createJob(mode, goal, packageName, allowSend = false, arguments_ = {}, toolName = null) {
+function createJob(mode, goal, packageName, allowSend = false, arguments_ = {}, toolName = null, checkpoint = null) {
   if (activeJob) throw new Error('Phone is busy. Stop or finish the current run first.');
   if (!goal?.trim() || goal.length > 4000) throw new Error('Enter a goal between 1 and 4000 characters.');
-  const job = {id:randomUUID(), mode, goal, packageName, allowSend, arguments:arguments_, toolName, status:'running', events:[], cancelled:false, result:''};
+  const job = {id:randomUUID(), mode, goal, packageName, allowSend, arguments:arguments_, toolName, checkpoint, status:'running', events:[], cancelled:false, result:''};
   jobs.set(job.id,job); activeJob = job;
   job.promise = run(job).finally(()=>{if(activeJob === job) activeJob = null;}); return job;
 }
 async function run(job) {
   const capability=state.tools.find(t=>t.name===job.toolName);
-  const screens = []; const history = []; const map = state.maps.find(m=>m.packageName === job.packageName);
+  const screens = [...(job.checkpoint?.screens || [])]; const history = [...(job.checkpoint?.history || [])];job.screens=screens;job.history=history; const map = state.maps.find(m=>m.packageName === job.packageName);
   try {
-    event(job,'start','Launching the app from its main activity with a fresh task');
-    await locked(()=>phone.launch(job.packageName)); await new Promise(r=>setTimeout(r,1200));
+    if(job.checkpoint)event(job,'start','Continuing from the current screen');else {event(job,'start','Launching the app from its main activity with a fresh task');await locked(()=>phone.launch(job.packageName));await new Promise(r=>setTimeout(r,1200));}
     for(let step=0; step < (job.mode === 'map' ? 12 : 24); step++) {
       if(job.cancelled) throw new Error('Stopped by user');
       event(job,'observe','Reading screen '+(step+1));
@@ -81,6 +80,8 @@ async function run(job) {
       }
       if(decision.kind === 'blocked') {job.status='blocked'; job.result=decision.result || decision.reasoning; event(job,'blocked',job.result); return;}
       const node = snapshot.nodes.find(n=>n.id === decision.targetId);
+      if(decision.kind==='fill_focused' && !snapshot.inputContext){history.push({action:'feedback',text:'No focusedEditor is present in the CURRENT UI. Tap the intended custom editor first, or use fill on a currently listed input. Previous focus is stale.'});event(job,'observe','The editor focus changed. Choosing a fresh input before typing.');continue;}
+      if(decision.kind==='fill' && !node?.editable){history.push({action:'feedback',text:'The chosen target is not an editable input. Use tap on its listed button first, then inspect the new UI for an input. Only fill IDs whose role is input.'});event(job,'observe','Opening an editor requires a tap before filling. Rechecking the next step.');continue;}
       const policy = assessAction(decision,node,job.mode,job.allowSend,{finalAction:finalActionMatches(capability,node),external:capability?.effect==='external'});
       if(!policy.allowed) {
         if(policy.stopBeforeSend && job.mode==='execute' && !job.allowSend) {
@@ -104,6 +105,7 @@ async function run(job) {
             job.effectAttempt=beforeEffect(job,current,capability);
           }
           await phone.act({...decision,targetId:rebound.id},current);
+        } else if(decision.kind==='fill_focused'){if(!current.inputContext || current.inputContext.packageName!==snapshot.inputContext.packageName || current.inputContext.fieldId!==snapshot.inputContext.fieldId)return false;await phone.act(decision,current);
         } else if(decision.kind==='type') {
           const oldFocus=snapshot.nodes.find(n=>n.editable && n.focused);const newFocus=current.nodes.find(n=>n.editable && n.focused);
           if(!oldFocus || !newFocus || oldFocus.resourceId!==newFocus.resourceId || oldFocus.package!==newFocus.package)return false;
@@ -117,7 +119,7 @@ async function run(job) {
     job.status='blocked'; job.result='Step limit reached. Narrow the goal and retry.'; event(job,'blocked',job.result);
   } catch(error) {job.status=job.cancelled ? 'cancelled':'failed'; job.result=error.message; event(job,'error',error.message);}
 }
-function publicJob(job) {return job && {id:job.id,mode:job.mode,goal:job.goal,status:job.status,events:job.events,result:job.result,validation:job.validation};}
+function publicJob(job) {return job && {id:job.id,mode:job.mode,goal:job.goal,status:job.status,events:job.events,result:job.result,validation:job.validation,canResume:['failed','blocked','cancelled'].includes(job.status) && !job.effectAttempt};}
 function toolSchema(tool) {
   const properties = Object.fromEntries(tool.parameters.map(p=>[p.name,{type:'string',description:p.description}]));
   if(tool.effect!=='none')properties.allow_external_action = {type:'boolean',default:false,description:'Set true only when the user authorizes the final action with these exact inputs. False prepares a preview.'};
@@ -144,17 +146,18 @@ app.get('/api/session',async(req,res)=>{
   res.json({token,serial:phone.serial,auth,model:agentModel,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
 });
 app.get('/api/devices',async(req,res)=>res.json({devices:await phone.devices()}));
-app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),test:suggestedTest(t)}))}));
+app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),lastJob:publicJob([...jobs.values()].at(-1)),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),test:suggestedTest(t)}))}));
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
 app.get('/api/jobs/:id',(req,res)=>{const job=jobs.get(req.params.id); if(!job)return res.status(404).json({error:'Unknown run'});res.json(publicJob(job));});
 app.post('/api/launch',async(req,res)=>{if(activeJob)throw new Error('Phone is busy');await locked(()=>phone.launch(req.body.packageName));res.json({ok:true});});
-app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName))));
+app.post('/api/map',(req,res)=>res.json(publicJob(createJob('map',req.body.goal,req.body.packageName,false,{},null,req.body.continueFromCurrent===true?{screens:[],history:[]}:null))));
 app.post('/api/execute',(req,res)=>{
-  const tool=state.tools.find(t=>t.name === req.body.name);if(!tool)throw new Error('Unknown MCP tool');
+  const tool=state.tools.find(t=>t.name === req.body.name);if(!tool)throw new Error('Unknown MCP tool');validateContract(tool);
   const args=req.body.arguments || {};res.json(publicJob(createJob('execute',instantiate(tool,args),tool.packageName,args.allow_external_action === true,args,tool.name)));
 });
+app.post('/api/jobs/:id/resume',(req,res)=>{const previous=jobs.get(req.params.id);if(!previous || !publicJob(previous).canResume)throw new Error('This run cannot be resumed safely. Inspect the result on the phone first.');res.json(publicJob(createJob(previous.mode,previous.goal,previous.packageName,previous.allowSend,previous.arguments,previous.toolName,{screens:previous.screens,history:previous.history})));});
 app.post('/api/jobs/:id/stop',(req,res)=>{const job=jobs.get(req.params.id);if(job?.status==='running'){job.cancelled=true;planner.cancel();}res.json({ok:true});});
 app.post('/api/action',async(req,res)=>{
   if(activeJob)throw new Error('Phone is busy'); if(!latest || req.body.snapshotId !== latest.id)throw new Error('Refresh the UI before tapping.');
@@ -166,7 +169,7 @@ app.post('/mcp',async(req,res)=>{
   server.setRequestHandler(CallToolRequestSchema,async request=>{
     try {
       if(request.params.name === 'android_observe'){const {snapshot,screenshot}=await capture();return {content:[{type:'text',text:JSON.stringify(snapshot)},{type:'image',data:screenshot.toString('base64'),mimeType:'image/png'}]};}
-      const tool=state.tools.find(t=>t.name === request.params.name);if(!tool)throw new Error('Unknown tool');if(tool.validation?.status!=='verified')throw new Error('Test this workflow in the studio before using it through MCP.');
+      const tool=state.tools.find(t=>t.name === request.params.name);if(!tool)throw new Error('Unknown tool');validateContract(tool);if(tool.validation?.status!=='verified')throw new Error('Test this workflow in the studio before using it through MCP.');
       const args=request.params.arguments || {};const job=createJob('execute',instantiate(tool,args),tool.packageName,args.allow_external_action === true,args,tool.name);await job.promise;
       return {content:[{type:'text',text:JSON.stringify(publicJob(job))}],isError:job.status !== 'completed'};
     } catch(error) {return {content:[{type:'text',text:error.message}],isError:true};}

@@ -36,3 +36,5 @@ test('test proposals never fabricate contacts or app-specific parameters',()=>{
 });
 
 test('mapping has no existing contract and can still navigate',()=>{assert.equal(finalActionMatches(undefined,{text:'Search'}),false);});
+
+test('invalid older contracts cannot be offered as runnable tests',()=>{assert.equal(suggestedTest({effect:'none',parameters:[],verification:{finalAction:{label:'Send',resourceId:''},preview:[],completion:[check('Draft','input')]}}).checkable,false);});

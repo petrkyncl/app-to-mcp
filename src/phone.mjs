@@ -1,5 +1,6 @@
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
+import {recognizeText,addVisualText} from './ocr.mjs';
 import {XMLParser} from 'fast-xml-parser';
 export const exec = promisify(execFile);
 const adb = process.env.ADB || '/Users/Petr/Tools/platform-tools/adb';
@@ -36,7 +37,14 @@ export function compactUI(snapshot) {
     let parent=byId.get(n.parentId);while(parent){if(parent.clickable)return false;parent=byId.get(parent.parentId);}
     return true;
   });
-  return {app:snapshot.package,elements:useful.slice(0,65).map(n=>({id:n.id,...(n.resourceId?{resourceId:n.resourceId}:{}),role:n.editable?'input':n.clickable?'button':'text',label:(n.label || n.resourceId.split('/').at(-1) || 'Input').replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,110),...(n.editable?{value:n.text.replace(/[\u200b-\u200f\ufeff]/g,''),actions:['fill','tap']} : n.clickable?{actions:['tap']} : {})})),truncated:useful.length>65};
+  return {app:snapshot.package,...(snapshot.inputContext?{focusedEditor:{...snapshot.inputContext,actions:['fill_focused']}}:{}),elements:useful.slice(0,65).map(n=>({id:n.id,...(n.resourceId?{resourceId:n.resourceId}:{}),role:n.editable?'input':n.clickable?'button':'text',label:(n.label || n.resourceId.split('/').at(-1) || 'Input').replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,110),...(n.editable?{value:n.text.replace(/[\u200b-\u200f\ufeff]/g,''),actions:['fill','tap']} : n.clickable?{actions:['tap']} : {})})),truncated:useful.length>65};
+}
+export function parseInputContext(value) {
+  const section=value.match(/curEditorInfo:\s+inputType=(0x[0-9a-f]+)([\s\S]{0,1400}?)hintLocales=/i);
+  if(!section || !Number(section[1]))return null;
+  const packageName=section[2].match(/packageName=([a-zA-Z0-9_.]+)/)?.[1];const fieldId=section[2].match(/fieldId=(0x[0-9a-f]+|-?\d+)/i)?.[1];
+  if(!packageName || !fieldId)return null;
+  return {packageName,fieldId,inputType:section[1],label:section[2].match(/hintText=(.*?) label=/)?.[1] || 'Focused text editor'};
 }
 export class Phone {
   constructor(serial) { this.serial = serial; }
@@ -49,11 +57,16 @@ export class Phone {
     return stdout.split('\n').slice(1).filter(x => x.trim()).map(line => ({serial: line.split(/\s+/)[0], state: line.split(/\s+/)[1], model: line.match(/model:(\S+)/)?.[1] || 'Android'}));
   }
   async screenshot() { return this.run(['exec-out', 'screencap', '-p'], {encoding: 'buffer'}); }
+  async inputContext(){return parseInputContext(await this.run(['shell','dumpsys','input_method']));}
   async snapshot() {
     await this.run(['shell', 'uiautomator', 'dump', '/data/local/tmp/app-to-mcp-ui.xml']);
     const xml = await this.run(['exec-out', 'cat', '/data/local/tmp/app-to-mcp-ui.xml']);
     const nodes = flattenUI(parser.parse(xml.slice(xml.indexOf('<?xml'))));
-    return {nodes, package: nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '', capturedAt: new Date().toISOString()};
+    const packageName=nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '';
+    const inputContext=nodes.some(n=>n.editable && n.focused)?null:await this.inputContext();
+    if(inputContext?.packageName===packageName)this.visualFallback=true;
+    if(this.visualFallback)addVisualText(nodes,await recognizeText(await this.screenshot()),packageName);
+    return {inputContext:inputContext?.packageName===packageName?inputContext:null,nodes, package: nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '', capturedAt: new Date().toISOString()};
   }
   async apps() {
     const result = await this.run(['shell', 'pm', 'list', 'packages', '--user', 'current', '-3']);
@@ -74,11 +87,16 @@ export class Phone {
       const node = snapshot.nodes.find(n => n.id === action.targetId);
       if (!node) throw new Error('Element no longer exists. Capture the screen again.');
       await this.run(['shell', 'input', 'tap', ...node.center.map(String)]);
-    } else if (action.kind === 'type' || action.kind === 'fill') {
+    } else if (action.kind === 'type' || action.kind === 'fill' || action.kind === 'fill_focused') {
       if (typeof action.text!=='string' || !/^[\x20-\x7E]{0,2000}$/.test(action.text) || (action.kind==='type' && !action.text)) throw new Error('This prototype currently types ASCII text only. Use scrcpy for accented text.');
       // Single-quote the Android shell argument; execFile alone only protects the host shell.
       if(action.text.includes('%s')) throw new Error('Literal %s cannot be typed by Android input text. Use scrcpy for this text.');
       const text = action.text.replaceAll(' ', '%s');
+      if(action.kind==='fill_focused') {
+        const current=await this.inputContext();const expected=snapshot.inputContext;
+        if(!expected || !current || expected.packageName!==snapshot.package || current.packageName!==expected.packageName || current.fieldId!==expected.fieldId)throw new Error('The focused editor changed. Observe again before entering text.');
+        await this.run(['shell','input','keycombination','113','29']);await this.run(['shell','input','keyevent','67']);
+      }
       if(action.kind==='fill') {
         const node=snapshot.nodes.find(n=>n.id===action.targetId && n.editable);if(!node)throw new Error('Select an editable input for fill.');
         await this.run(['shell','input','tap',...node.center.map(String)]);

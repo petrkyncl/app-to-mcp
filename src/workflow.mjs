@@ -1,5 +1,6 @@
 export function suggestedTest(tool) {
-  return {arguments:Object.fromEntries(tool.parameters.map(p=>[p.name,p.example || ''])),status:tool.validation?.status || 'mapped',validation:tool.validation || null,effect:tool.effect || 'external',checks:(tool.verification?.completion || []).map(c=>c.description),checkable:Boolean(tool.verification?.completion?.length)};
+  let checkable=true;try{validateContract(tool);}catch{checkable=false;}
+  return {arguments:Object.fromEntries(tool.parameters.map(p=>[p.name,p.example || ''])),status:tool.validation?.status || 'mapped',validation:tool.validation || null,effect:tool.effect || 'external',checks:(tool.verification?.completion || []).map(c=>c.description),checkable};
 }
 const normalize=value=>String(value || '').normalize('NFD').replace(/\p{M}/gu,'').trim().toLowerCase().replace(/\s+/g,' ');
 function template(value,args){return value.replace(/\{\{([a-z0-9_]+)\}\}/g,(_,name)=>String(args[name] || ''));}

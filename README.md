@@ -35,8 +35,10 @@ Environment options:
 
 - `src/phone.mjs`: explicit per-device ADB bridge, screenshots, semantic UI nodes and fresh launcher tasks.
 - `src/app-labels.mjs`: extracts only APK manifest and resources to read actual labels with Android's aapt2. It does not copy whole application APKs.
-- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a compact list of meaningful UI elements and a strict JSON output schema. Screenshots are only sent when the accessible UI has fewer than three meaningful elements. It does not copy authentication tokens or scrape ChatGPT's browser UI.
+- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a compact list of meaningful UI elements and a strict JSON output schema. Screenshots are only sent when the accessible UI has fewer than three meaningful elements. Custom editor text is read locally with macOS Vision OCR; the planner receives compact recognized text. It does not copy authentication tokens or scrape ChatGPT's browser UI.
 - `src/server.mjs`: local web API, jobs, generated tool registry, and official MCP SDK Streamable HTTP transport.
+- `src/workflow.mjs`: generic test proposals and deterministic preview/completion contracts.
+- `src/ocr.mjs` and `src/ocr.swift`: local visual text fallback for custom editors; the helper is compiled into ignored `work/` with installed Apple developer tools.
 - `src/policy.mjs`: mapping/preview stops before final submission; calls, purchases and deletion are rejected.
 
 Generated tools are semantic goals grounded in observed screens; each execution uses fresh UI observations and generic result contracts. They are not fixed coordinate macros. Screens may contain private content: observations are sent to Codex when a run starts. Cached metadata, UI maps and planner inputs are in ignored `work/` and are not committed.
@@ -64,6 +66,6 @@ Workflow validation is app-independent. Each mapped capability defines variable 
 
 ## Product contract
 
-The user selects an installed app by name and describes a capability in ordinary language. The same exploration engine must discover the workflow, variable inputs, final action and observable result across apps; WhatsApp and Reddit are examples, not special integrations. Mapping proposes a concrete test. The studio distinguishes mapped, prepared and verified capabilities and only verified ones are discoverable through MCP. Never silently reduce “send a message” or “publish a post” to a draft-only capability. Use the low-cost Luna planner by default; keep observations compact and expose direct fill/tap actions.
+The user selects an installed app by name and describes a capability in ordinary language. The same exploration engine must discover the workflow, variable inputs, final action and observable result across apps; WhatsApp and Reddit are examples, not special integrations. Mapping proposes a concrete test. The studio distinguishes mapped, prepared and verified capabilities and only verified ones are discoverable through MCP. Never silently reduce “send a message” or “publish a post” to a draft-only capability. Use the low-cost Luna planner by default; keep observations compact and expose direct fill/tap actions and focused-editor replacement.
 
 Universal app coverage is a design requirement, not a validated guarantee. Apps with inaccessible editors, invisible result states, login requirements or unsupported text input require further capability work; failed tests must remain visible.
