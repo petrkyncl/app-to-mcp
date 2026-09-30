@@ -1,6 +1,7 @@
 import express from 'express';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StreamableHTTPClientTransport} from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {LiveVideo} from './video.mjs';
 import {planCall} from './agent.mjs';
 import {Server} from '@modelcontextprotocol/sdk/server/index.js';
 import {StreamableHTTPServerTransport} from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -22,6 +23,7 @@ let token=process.env.MCP_TOKEN;
 if(!token){await mkdir(path.dirname(tokenFile),{recursive:true});try{token=(await readFile(tokenFile,'utf8')).trim();}catch(error){if(error.code!=='ENOENT')throw error;}if(!token){token=randomBytes(24).toString('hex');await writeFile(tokenFile,token,{mode:0o600});}}
 const phone = new Phone(process.env.ANDROID_SERIAL || 'RFGL729B8JP');
 const planner = new Planner(root);
+const liveVideo=new LiveVideo(phone);
 const appCatalog = new AppCatalog(phone,root);
 const storage = path.join(root,'work','state.json');
 let state = {maps:[], tools:[]};
@@ -172,6 +174,9 @@ app.get('/api/session',async(req,res)=>{
 app.get('/api/devices',async(req,res)=>res.json({devices:await phone.devices()}));
 app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),lastJob:publicJob([...jobs.values()].at(-1)),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(t=>({...toolSchema(t),displayName:t.displayName,demoProfile:t.demoProfile,test:suggestedTest(t)}))}));
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
+app.get('/api/video',(req,res)=>liveVideo.subscribe(req,res));
+app.get('/api/video/frame',(req,res)=>{if(!liveVideo.frame)return res.status(503).json({error:'No live frame yet'});res.set('Cache-Control','no-store').type('jpeg').send(liveVideo.frame);});
+app.get('/api/video/status',(req,res)=>res.json(liveVideo.info()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
 app.get('/api/jobs/:id',(req,res)=>{const job=jobs.get(req.params.id); if(!job)return res.status(404).json({error:'Unknown run'});res.json(publicJob(job));});
@@ -214,3 +219,5 @@ app.delete('/mcp',(req,res)=>res.status(405).set('Allow','POST').end());
 app.use(express.static(path.join(root,'public')));
 app.use((error,req,res,next)=>{console.error(error.message);if(!res.headersSent)res.status(400).json({error:error.message});});
 app.listen(port,'127.0.0.1',()=>console.log(`App to MCP: http://127.0.0.1:${port}`));
+
+for(const signal of ['SIGINT','SIGTERM'])process.once(signal,()=>{liveVideo.stop();process.exit(0);});

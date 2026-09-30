@@ -81,3 +81,7 @@ The MCP caller sets `allow_external_action: true` for an explicitly authorized s
 ## Prompt demo
 
 The studio’s **Ask your agent** form accepts a request such as `Send a WhatsApp message to David Čečko: "Hello David, testing Tapio."`. Run invokes an actual MCP SDK client against the local server. Explicit send/post requests authorize final submission; explicit draft requests stop at preview. Common demo message syntax uses a fast interpreter; other requests use one Luna call to choose any available tool and bind parameters. This does not imply arbitrary apps are already supported.
+
+## Live phone preview
+
+The live view uses the installed scrcpy server (version detected from the local client) to capture H.264 video on the selected device. A dedicated per-device ADB forward carries that stream to FFmpeg, which supplies continuous JPEG frames to the browser over one multipart HTTP connection. Preview does not poll ADB screencap or occupy the workflow queue. Audio and remote control are disabled for this preview transport; actions still use the existing executor. The stream pauses when the tab is hidden or Live view is turned off, shares one capture process across viewers and stops when there are no viewers. Environment overrides: `SCRCPY`, `SCRCPY_SERVER`, `FFMPEG`. Defaults use installed Homebrew binaries. The screen is not saved as a recording.
