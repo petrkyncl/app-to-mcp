@@ -23,7 +23,7 @@ export function flattenUI(parsed) {
   visit(parsed);
   for(const node of nodes){
     node.label=node.text || node.description;
-    if(!node.label && node.clickable){const descendants=nodes.filter(child=>{let parent=child.parentId;while(parent!==null){if(parent===node.id)return true;parent=nodes[Number(parent)]?.parentId??null;}return false;});node.label=descendants.find(n=>n.text)?.text || descendants.find(n=>n.description)?.description || '';}
+    if(!node.label && node.clickable){const descendants=nodes.filter(child=>{let parent=child.parentId;while(parent!==null){if(parent===node.id)return true;parent=nodes[Number(parent)]?.parentId??null;}return false;});node.label=descendants.find(n=>n.text)?.text || descendants.find(n=>n.description)?.description || descendants.find(n=>n.resourceId)?.resourceId.split('/').at(-1).replaceAll('_',' ') || '';}
   }
   return nodes;
 }
@@ -36,7 +36,7 @@ export function compactUI(snapshot) {
     let parent=byId.get(n.parentId);while(parent){if(parent.clickable)return false;parent=byId.get(parent.parentId);}
     return true;
   });
-  return {app:snapshot.package,elements:useful.slice(0,65).map(n=>({id:n.id,role:n.editable?'input':n.clickable?'button':'text',label:(n.label || n.resourceId.split('/').at(-1) || 'Input').replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,110),...(n.editable?{value:n.text.replace(/[\u200b-\u200f\ufeff]/g,''),actions:['fill','tap']} : n.clickable?{actions:['tap']} : {})})),truncated:useful.length>65};
+  return {app:snapshot.package,elements:useful.slice(0,65).map(n=>({id:n.id,...(n.resourceId?{resourceId:n.resourceId}:{}),role:n.editable?'input':n.clickable?'button':'text',label:(n.label || n.resourceId.split('/').at(-1) || 'Input').replace(/[\u200b-\u200f\ufeff]/g,'').slice(0,110),...(n.editable?{value:n.text.replace(/[\u200b-\u200f\ufeff]/g,''),actions:['fill','tap']} : n.clickable?{actions:['tap']} : {})})),truncated:useful.length>65};
 }
 export class Phone {
   constructor(serial) { this.serial = serial; }
@@ -56,8 +56,8 @@ export class Phone {
     return {nodes, package: nodes.find(n => n.package && !['com.android.systemui','com.google.android.inputmethod.latin','com.samsung.android.honeyboard'].includes(n.package))?.package || '', capturedAt: new Date().toISOString()};
   }
   async apps() {
-    const result = await this.run(['shell', 'pm', 'list', 'packages', '-3']);
-    const launchers=await this.run(['shell','cmd','package','query-activities','--components','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER']);
+    const result = await this.run(['shell', 'pm', 'list', 'packages', '--user', 'current', '-3']);
+    const launchers=await this.run(['shell','cmd','package','query-activities','--user','current','--components','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER']);
     const launchable=new Set(launchers.split('\n').filter(line=>line.includes('/')).map(line=>line.trim().split('/')[0]));
     return result.split('\n').filter(Boolean).map(p => p.replace('package:', '').trim()).filter(p=>launchable.has(p)).sort();
   }
@@ -75,7 +75,7 @@ export class Phone {
       if (!node) throw new Error('Element no longer exists. Capture the screen again.');
       await this.run(['shell', 'input', 'tap', ...node.center.map(String)]);
     } else if (action.kind === 'type' || action.kind === 'fill') {
-      if (!/^[\x20-\x7E]{1,2000}$/.test(action.text)) throw new Error('This prototype currently types ASCII text only. Use scrcpy for accented text.');
+      if (typeof action.text!=='string' || !/^[\x20-\x7E]{0,2000}$/.test(action.text) || (action.kind==='type' && !action.text)) throw new Error('This prototype currently types ASCII text only. Use scrcpy for accented text.');
       // Single-quote the Android shell argument; execFile alone only protects the host shell.
       if(action.text.includes('%s')) throw new Error('Literal %s cannot be typed by Android input text. Use scrcpy for this text.');
       const text = action.text.replaceAll(' ', '%s');
@@ -85,7 +85,7 @@ export class Phone {
         await this.run(['shell','input','keycombination','113','29']);
         await this.run(['shell','input','keyevent','67']);
       }
-      await this.run(['shell', 'input text ' + "'" + text.replaceAll("'", "'\\''") + "'"]);
+      if(text)await this.run(['shell', 'input text ' + "'" + text.replaceAll("'", "'\\''") + "'"]);
     } else if (action.kind === 'back') await this.run(['shell', 'input', 'keyevent', '4']);
     else if (action.kind === 'scroll') {
       const width = Math.max(...snapshot.nodes.map(n => n.bounds[2]), 500);

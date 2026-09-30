@@ -25,21 +25,21 @@ Environment options:
 ## Demo flow
 
 1. Select an app by its actual application label. Only user-installed packages with launcher activities are eligible. Names load in the background and are cached locally.
-2. Describe a concrete capability, including a test contact if mapping a messaging workflow.
-3. Click **Explore & build tools**. Each run starts the app through its MAIN/LAUNCHER activity with a cleared task, observes the real UI, then asks Codex for one constrained action. An app can still restore its own saved navigation; the planner must inspect the starting screen.
+2. Describe a concrete capability, including optional test context (a contact, community, destination or other input).
+3. Click **Map workflow**. Each run starts the app through its MAIN/LAUNCHER activity with a cleared task, observes the real UI, then asks Codex for one constrained action. An app can still restore its own saved navigation; the planner must inspect the starting screen.
 4. Review learned screens and generated MCP tools.
-5. Fill tool parameters and use **Run preview** to prepare the workflow. **Run & allow sending** explicitly authorizes message sending for that run.
-6. **Connect MCP** displays the endpoint and bearer-token configuration for a client running on this Mac. Refresh the client's tool list after mapping.
+5. Review the proposed test parameters and expected outcome. **Check draft** verifies the inputs. **Run test & verify** shows the exact capability and parameters for confirmation, runs the test and checks the workflow’s observable completion conditions. It does not claim delivery.
+6. Only tools that passed a real test appear in MCP discovery. **Connect MCP** displays the endpoint and bearer-token configuration for a client running on this Mac. Refresh the client's tool list after mapping.
 
 ## Architecture
 
 - `src/phone.mjs`: explicit per-device ADB bridge, screenshots, semantic UI nodes and fresh launcher tasks.
 - `src/app-labels.mjs`: extracts only APK manifest and resources to read actual labels with Android's aapt2. It does not copy whole application APKs.
-- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a compact list of meaningful UI elements and a strict JSON output schema. Screenshots are not sent on routine exploration steps. It does not copy authentication tokens or scrape ChatGPT's browser UI.
+- `src/planner.mjs`: uses official `codex exec` with the existing ChatGPT login, a compact list of meaningful UI elements and a strict JSON output schema. Screenshots are only sent when the accessible UI has fewer than three meaningful elements. It does not copy authentication tokens or scrape ChatGPT's browser UI.
 - `src/server.mjs`: local web API, jobs, generated tool registry, and official MCP SDK Streamable HTTP transport.
-- `src/policy.mjs`: mapping/preview stops before sending; calls, purchases and deletion are rejected.
+- `src/policy.mjs`: mapping/preview stops before final submission; calls, purchases and deletion are rejected.
 
-Generated tools are semantic goals grounded in observed screens; each execution uses fresh UI observations. They are not fixed coordinate macros. Screens may contain private content: observations are sent to Codex when a run starts. Cached metadata, UI maps and planner inputs are in ignored `work/` and are not committed.
+Generated tools are semantic goals grounded in observed screens; each execution uses fresh UI observations and generic result contracts. They are not fixed coordinate macros. Screens may contain private content: observations are sent to Codex when a run starts. Cached metadata, UI maps and planner inputs are in ignored `work/` and are not committed.
 
 ## Validation
 
@@ -59,3 +59,11 @@ The planner smoke test uses synthetic data. The integration test reads the real 
 - The constrained executor has heuristic side-effect checks; this is a supervised hackathon prototype, not a hardened production agent for arbitrary apps.
 - The server listens only on loopback. Remote ChatGPT cannot connect to this local URL without a separately authorized hosting/tunnel setup.
 - Message sending must be explicitly authorized for each execution.
+
+Workflow validation is app-independent. Each mapped capability defines variable parameters, an observed final action, preview checks and completion checks. External actions must produce a new visible result; a tap alone cannot verify success. `allow_external_action` authorizes the final action for the supplied parameters. Apps without accessible UI elements or an observable result can remain blocked and must not be labelled supported. Repeated actions on unchanged UI are stopped, and a send attempt is never automatically retried within a run.
+
+## Product contract
+
+The user selects an installed app by name and describes a capability in ordinary language. The same exploration engine must discover the workflow, variable inputs, final action and observable result across apps; WhatsApp and Reddit are examples, not special integrations. Mapping proposes a concrete test. The studio distinguishes mapped, prepared and verified capabilities and only verified ones are discoverable through MCP. Never silently reduce “send a message” or “publish a post” to a draft-only capability. Use the low-cost Luna planner by default; keep observations compact and expose direct fill/tap actions.
+
+Universal app coverage is a design requirement, not a validated guarantee. Apps with inaccessible editors, invisible result states, login requirements or unsupported text input require further capability work; failed tests must remain visible.

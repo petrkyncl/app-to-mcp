@@ -10,6 +10,7 @@ assert.equal((await fetch(base+'/mcp',{method:'POST',headers:{'Content-Type':'ap
 const client=new Client({name:'app-to-mcp-smoke',version:'1.0.0'});
 await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{Authorization:'Bearer '+session.token}}}));
 const tools=await client.listTools();assert(tools.tools.some(t=>t.name==='android_observe'));
+const status=await(await fetch(base+'/api/status')).json();const verified=status.tools.filter(t=>t.test?.status==='verified').map(t=>t.name).sort();assert.deepEqual(tools.tools.filter(t=>t.name!=='android_observe').map(t=>t.name).sort(),verified);
 const result=await client.callTool({name:'android_observe',arguments:{}});assert.equal(result.isError,undefined);
 const snapshot=JSON.parse(result.content.find(c=>c.type==='text').text);assert(snapshot.nodes.length>0);
 assert(result.content.some(c=>c.type==='image' && c.mimeType==='image/png'));

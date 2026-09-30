@@ -53,7 +53,7 @@ export class AppCatalog {
   async list() {
     if(!this.ready) {
       const packages=await this.phone.apps();
-      this.apps=packages.map(packageName=>({packageName,label:packageName.split('.').at(-1),resolved:false}));this.ready=true;
+      this.apps=packages.map(packageName=>({packageName,label:packageName.split('.').at(-1),resolved:false,launchable:true}));this.ready=true;
       this.loadLabels().catch(error=>{this.error=error.message;this.loading=false;});
     }
     return {apps:this.apps.filter(a=>a.launchable!==false).sort((a,b)=>a.label.localeCompare(b.label)),loading:this.loading,error:this.error};
@@ -65,11 +65,12 @@ export class AppCatalog {
     const ordered=[...this.apps].sort((a,b)=>Number(b.packageName==='com.whatsapp')-Number(a.packageName==='com.whatsapp'));
     for(const app of ordered) {
       try {
-        const paths=(await this.phone.run(['shell','pm','path',app.packageName])).split('\n').filter(p=>p.startsWith('package:')).map(p=>p.slice(8).trim());const apk=paths.find(p=>p.endsWith('/base.apk')) || paths[0];
-        if(cache[app.packageName]?.apk===apk){Object.assign(app,cache[app.packageName]);continue;}
+        const paths=(await this.phone.run(['shell','pm','path','--user','current',app.packageName])).split('\n').filter(p=>p.startsWith('package:')).map(p=>p.slice(8).trim());const apk=paths.find(p=>p.endsWith('/base.apk')) || paths[0];
+        if(cache[app.packageName]?.apk===apk){Object.assign(app,cache[app.packageName],{launchable:true});continue;}
         const file=path.join(dir,app.packageName+'.metadata.apk');await writeFile(file,await metadataApk(this.phone,apk));
         const {stdout}=await exec(aapt,['dump','badging',file],{timeout:15000,maxBuffer:2*1024*1024});
-        const launchable=/launchable-activity:/.test(stdout);const label=stdout.match(/^application-label:'(.*)'$/m)?.[1] || stdout.match(/^application-label-en:'(.*)'$/m)?.[1] || app.label;
+        // Android's queried launcher activities are authoritative; aapt can omit activity aliases.
+        const launchable=true;const label=stdout.match(/^application-label:'(.*)'$/m)?.[1] || stdout.match(/^application-label-en:'(.*)'$/m)?.[1] || app.label;
         Object.assign(app,{label,resolved:true,launchable,apk});cache[app.packageName]={label,resolved:true,launchable,apk};
         await writeFile(path.join(dir,'labels.json'),JSON.stringify(cache));
       }catch(error){app.labelError=error.message;}

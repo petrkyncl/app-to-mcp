@@ -8,7 +8,7 @@ test('nested UI hierarchy retains semantic selectors and valid centers',()=>{
 });
 test('mapping and preview cannot press Send, explicit execution can',()=>{
  const decision={kind:'tap',sensitive:true};const node={description:'Send',resourceId:'com.whatsapp:id/send'};
- assert.equal(assessAction(decision,node,'map',true).allowed,false);assert.equal(assessAction(decision,node,'execute',false).allowed,false);assert.equal(assessAction(decision,node,'execute',true).allowed,true);
+ assert.equal(assessAction(decision,node,'map',true).allowed,false);assert.equal(assessAction(decision,node,'execute',false).allowed,false);assert.equal(assessAction(decision,node,'execute',true,{finalAction:true}).allowed,true);
 });
 test('send authorization never authorizes calls or deletion',()=>{
  assert.equal(assessAction({kind:'tap',sensitive:false},{description:'Delete message'},'execute',true).allowed,false);
@@ -42,3 +42,9 @@ test('stale targets and unsupported unicode are rejected before ADB',async()=>{
  await assert.rejects(()=>phone.act({kind:'type',text:'Ahoj čau'},{nodes:[]}),/ASCII/);
  await assert.rejects(()=>phone.launch('com.whatsapp; reboot'),/Invalid/);
 });
+
+test('create-post navigation is allowed while the final Post action needs a mapped contract',()=>{assert(assessAction({kind:'tap',sensitive:false},{text:'Create post'},'map',false).allowed);assert(!assessAction({kind:'tap',sensitive:true},{text:'Post'},'map',false).allowed);assert(assessAction({kind:'tap',sensitive:true},{text:'Post'},'execute',true,{finalAction:true}).allowed);});
+
+test('fill can clear a draft without typing or submitting it',async()=>{const phone=new Phone('test');const calls=[];phone.run=async args=>calls.push(args);await phone.act({kind:'fill',targetId:'1',text:''},{nodes:[{id:'1',editable:true,center:[20,30]}]});assert.equal(calls.length,3);assert.deepEqual(calls[2],['shell','input','keyevent','67']);});
+
+test('unlabelled clickable wrappers inherit an informative child resource ID',()=>{const nodes=flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',package:'test.app',node:{bounds:'[0,100][500,200]',clickable:'true',package:'test.app',node:{bounds:'[0,100][500,200]','resource-id':'post_body_field',package:'test.app'}}}}});const ui=compactUI({package:'test.app',nodes});assert(ui.elements.some(n=>n.label==='post body field' && n.actions.includes('tap')));});
