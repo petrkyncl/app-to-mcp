@@ -11,9 +11,10 @@ export class LiveVideo {
  info(){return {status:this.status,frames:this.frames,clients:this.clients.size,error:this.error,targetFps:30};}
  subscribe(req,res){
   clearTimeout(this.idleTimer);res.set({'Content-Type':'multipart/x-mixed-replace; boundary=tapio-frame','Cache-Control':'no-store, no-cache','X-Content-Type-Options':'nosniff'});res.flushHeaders();
-  const client={res,blocked:false};this.clients.add(client);res.on('drain',()=>{client.blocked=false;});req.on('close',()=>{this.clients.delete(client);if(!this.clients.size)this.idleTimer=setTimeout(()=>this.stop(),3000);});
+  const client={res,blocked:false,viewer:String(req.query.viewer || '')};this.clients.add(client);res.on('drain',()=>{client.blocked=false;});req.on('close',()=>{this.clients.delete(client);if(!this.clients.size)this.idleTimer=setTimeout(()=>this.stop(),3000);});
   if(this.frame)this.write(client,this.frame);if(!this.starting && !this.server)this.start();
  }
+ unsubscribe(viewer){for(const client of this.clients){if(client.viewer===viewer){this.clients.delete(client);client.res.end();}}if(!this.clients.size){clearTimeout(this.idleTimer);this.idleTimer=setTimeout(()=>this.stop(),3000);}}
  write(client,frame){if(client.blocked || client.res.destroyed)return;const header=Buffer.from(`--tapio-frame\r\nContent-Type: image/jpeg\r\nContent-Length: ${frame.length}\r\n\r\n`);client.blocked=!client.res.write(Buffer.concat([header,frame,Buffer.from('\r\n')]));}
  async start(){
   if(this.starting || this.server)return;const generation=++this.generation;this.starting=true;this.status='starting';this.error='';

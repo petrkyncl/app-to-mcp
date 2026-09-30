@@ -176,6 +176,7 @@ app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),ac
 app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
 app.get('/api/video',(req,res)=>liveVideo.subscribe(req,res));
 app.get('/api/video/frame',(req,res)=>{if(!liveVideo.frame)return res.status(503).json({error:'No live frame yet'});res.set('Cache-Control','no-store').type('jpeg').send(liveVideo.frame);});
+app.post('/api/video/stop',(req,res)=>{if(typeof req.body.viewer==='string')liveVideo.unsubscribe(req.body.viewer);res.json({ok:true});});
 app.get('/api/video/status',(req,res)=>res.json(liveVideo.info()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
