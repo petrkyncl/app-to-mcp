@@ -17,7 +17,9 @@ import {demoApps,scanDemo,executeDemo} from './demo.mjs';
 import {AppCatalog} from './app-labels.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT || 4318);
-const token = process.env.MCP_TOKEN || randomBytes(24).toString('hex');
+const tokenFile=path.join(root,'work','mcp-token');
+let token=process.env.MCP_TOKEN;
+if(!token){await mkdir(path.dirname(tokenFile),{recursive:true});try{token=(await readFile(tokenFile,'utf8')).trim();}catch(error){if(error.code!=='ENOENT')throw error;}if(!token){token=randomBytes(24).toString('hex');await writeFile(tokenFile,token,{mode:0o600});}}
 const phone = new Phone(process.env.ANDROID_SERIAL || 'RFGL729B8JP');
 const planner = new Planner(root);
 const appCatalog = new AppCatalog(phone,root);

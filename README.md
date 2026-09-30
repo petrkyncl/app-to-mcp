@@ -20,7 +20,7 @@ Environment options:
 - `AGENT_MODEL`: optional Codex model override; defaults to `gpt-6-luna` with low reasoning.
 - `AAPT2`: optional path to Android SDK aapt2; newest installed stable macOS build-tools is detected by default.
 - `PORT`: defaults to 4318.
-- `MCP_TOKEN`: optional fixed bearer token. Without it, each server start generates a fresh token.
+- `MCP_TOKEN`: optional fixed bearer token. Without it, a private token is generated once in ignored `work/mcp-token` and reused across restarts.
 
 ## Demo flow
 

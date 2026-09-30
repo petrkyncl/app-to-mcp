@@ -34,7 +34,7 @@
 </aside>
 </main>
 <dialog id="test-dialog"><div class="dialog-heading"><h2>Run this test?</h2><button id="cancel-test" type="button" class="secondary">Cancel</button></div><p id="confirm-capability"></p><p>This performs the real action in your selected app using exactly these inputs.</p><div id="confirm-parameters"></div><button id="confirm-test" type="button">Run test & verify</button></dialog>
-<dialog id="connect-dialog"><div class="dialog-heading"><h2>Connect your agent</h2><button id="close-dialog" class="secondary" aria-label="Close">Close</button></div><p id="connect-readiness"></p><p>Use this local Streamable HTTP endpoint in an MCP client on this Mac.</p><label>MCP endpoint</label><code id="endpoint"></code><label>Client configuration</label><pre id="config"></pre><button id="copy-config">Copy configuration</button><p class="muted">The token belongs to this server session. Restarting the server creates a new token unless MCP_TOKEN is set.</p></dialog>
+<dialog id="connect-dialog"><div class="dialog-heading"><h2>Connect your agent</h2><button id="close-dialog" class="secondary" aria-label="Close">Close</button></div><p id="connect-readiness"></p><p>Use this local Streamable HTTP endpoint in an MCP client on this Mac.</p><label>MCP endpoint</label><code id="endpoint"></code><label>Client configuration</label><pre id="config"></pre><button id="copy-config">Copy configuration</button><p class="muted">The local token stays valid across server restarts. Keep this configuration private.</p></dialog>
 <div id="toast" role="status" hidden></div>
 <script type="module" src="app.js"></script>
 </body></html>
