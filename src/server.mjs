@@ -8,19 +8,21 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {Phone, exec} from './phone.mjs';
 import {Planner} from './planner.mjs';
-import {assessAction} from './policy.mjs';
+import {assessAction,rebindTarget} from './policy.mjs';
+import {AppCatalog} from './app-labels.mjs';
 export const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const port = Number(process.env.PORT || 4318);
 const token = process.env.MCP_TOKEN || randomBytes(24).toString('hex');
 const phone = new Phone(process.env.ANDROID_SERIAL || 'RFGL729B8JP');
 const planner = new Planner(root);
+const appCatalog = new AppCatalog(phone,root);
 const storage = path.join(root,'work','state.json');
 let state = {maps:[], tools:[]};
 try {state = JSON.parse(await readFile(storage,'utf8'));} catch(error) {if(error.code !== 'ENOENT') throw error;}
 const jobs = new Map(); let activeJob = null; let latest = null;
 let queue = Promise.resolve();
 function locked(fn) {const result = queue.then(fn); queue = result.catch(()=>{}); return result;}
-function hash(snapshot) {return createHash('sha256').update(JSON.stringify(snapshot.nodes)).digest('hex').slice(0,16);}
+function hash(snapshot) {return createHash('sha256').update(JSON.stringify(snapshot.nodes.filter(n=>!['com.android.systemui','com.samsung.android.honeyboard','com.google.android.inputmethod.latin'].includes(n.package)))).digest('hex').slice(0,16);}
 async function capture() {return locked(async () => {const snapshot = await phone.snapshot(); snapshot.id = hash(snapshot); const screenshot = await phone.screenshot(); latest = snapshot; return {snapshot,screenshot};});}
 async function persist() {await mkdir(path.dirname(storage),{recursive:true}); await writeFile(storage+'.tmp',JSON.stringify(state,null,2)); await rename(storage+'.tmp',storage);}
 function event(job, type, message, details = {}) {job.events.push({type,message,time:new Date().toISOString(),...details});}
@@ -34,7 +36,7 @@ function createJob(mode, goal, packageName, allowSend = false) {
 async function run(job) {
   const screens = []; const history = []; const map = state.maps.find(m=>m.packageName === job.packageName);
   try {
-    event(job,'start',job.mode === 'map' ? 'Opening app and learning its UI' : 'Executing tool on the phone');
+    event(job,'start','Launching the app from its main activity with a fresh task');
     await locked(()=>phone.launch(job.packageName)); await new Promise(r=>setTimeout(r,1200));
     for(let step=0; step < (job.mode === 'map' ? 12 : 24); step++) {
       if(job.cancelled) throw new Error('Stopped by user');
@@ -70,11 +72,20 @@ async function run(job) {
       if(!policy.allowed) {
         job.status='blocked'; job.result=policy.reason; event(job,'blocked',job.result); return;
       }
-      await locked(async()=>{
+      const applied=await locked(async()=>{
         const current = await phone.snapshot();
-        if(hash(current) !== snapshot.id) throw new Error('Screen changed while the agent was thinking. Run again from the current screen.');
-        await phone.act(decision,snapshot);
+        if(decision.kind==='tap') {
+          const rebound=rebindTarget(node,current.nodes);if(!rebound)return false;
+          const verified=assessAction(decision,rebound,job.mode,job.allowSend);if(!verified.allowed)throw new Error(verified.reason);
+          await phone.act({...decision,targetId:rebound.id},current);
+        } else if(decision.kind==='type') {
+          const oldFocus=snapshot.nodes.find(n=>n.editable && n.focused);const newFocus=current.nodes.find(n=>n.editable && n.focused);
+          if(!oldFocus || !newFocus || oldFocus.resourceId!==newFocus.resourceId || oldFocus.package!==newFocus.package)return false;
+          await phone.act(decision,current);
+        } else {if(hash(current)!==snapshot.id)return false;await phone.act(decision,current);}
+        return true;
       });
+      if(!applied){event(job,'observe','UI changed; observing again before acting');continue;}
       history.push({screenName:decision.screenName,action:decision.kind,target:node ? {text:node.text,description:node.description,resourceId:node.resourceId}:null,text:decision.text,reasoning:decision.reasoning});
     }
     job.status='blocked'; job.result='Step limit reached. Narrow the goal and retry.'; event(job,'blocked',job.result);
@@ -107,7 +118,7 @@ app.get('/api/session',async(req,res)=>{
   res.json({token,serial:phone.serial,auth,mcpUrl:`http://127.0.0.1:${port}/mcp`,mcpConfig:{mcpServers:{android:{url:`http://127.0.0.1:${port}/mcp`,headers:{Authorization:'Bearer '+token}}}}});
 });
 app.get('/api/status',async(req,res)=>res.json({devices:await phone.devices(),activeJob:publicJob(activeJob),maps:state.maps.map(m=>({...m,screens:m.screens.map(s=>({name:s.name,id:s.id,elementCount:s.elements.length}))})),tools:state.tools.map(toolSchema)}));
-app.get('/api/apps',async(req,res)=>res.json(await phone.apps()));
+app.get('/api/apps',async(req,res)=>res.json(await appCatalog.list()));
 app.get('/api/screenshot',async(req,res)=>{const png=await locked(()=>phone.screenshot()); res.set('Cache-Control','no-store').type('png').send(png);});
 app.get('/api/snapshot',async(req,res)=>{const {snapshot}=await capture();res.json(snapshot);});
 app.get('/api/jobs/:id',(req,res)=>{const job=jobs.get(req.params.id); if(!job)return res.status(404).json({error:'Unknown run'});res.json(publicJob(job));});

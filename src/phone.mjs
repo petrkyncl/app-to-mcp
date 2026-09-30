@@ -12,7 +12,7 @@ export function flattenUI(parsed) {
     if (value.bounds) {
       const b = String(value.bounds).match(/\[(\d+),(\d+)\]\[(\d+),(\d+)\]/);
       if (b && Number(b[3]) > Number(b[1]) && Number(b[4]) > Number(b[2])) {
-        nodes.push({id: String(nodes.length), text: String(value.text || ''), description: String(value['content-desc'] || ''), resourceId: String(value['resource-id'] || ''), class: String(value.class || ''), package: String(value.package || ''), clickable: value.clickable === 'true', editable: /EditText/.test(value.class || ''), bounds: b.slice(1).map(Number), center: [Math.round((+b[1] + +b[3])/2), Math.round((+b[2] + +b[4])/2)]});
+      nodes.push({id: String(nodes.length), text: String(value.text || ''), description: String(value['content-desc'] || ''), resourceId: String(value['resource-id'] || ''), class: String(value.class || ''), package: String(value.package || ''), clickable: value.clickable === 'true', focused: value.focused === 'true', editable: /EditText/.test(value.class || ''), bounds: b.slice(1).map(Number), center: [Math.round((+b[1] + +b[3])/2), Math.round((+b[2] + +b[4])/2)]});
       }
     }
     if (value.hierarchy) visit(value.hierarchy);
@@ -23,7 +23,8 @@ export function flattenUI(parsed) {
 export class Phone {
   constructor(serial) { this.serial = serial; }
   async run(args, options = {}) {
-    const {stdout} = await exec(adb, ['-s', this.serial, ...args], {timeout: 25000, maxBuffer: 25 * 1024 * 1024, ...options}); return stdout;
+    try {const {stdout} = await exec(adb, ['-s', this.serial, ...args], {timeout: 25000, maxBuffer: 25 * 1024 * 1024, ...options}); return stdout;}
+    catch(error) {const lines=String(error.stderr || error.stdout || error.message).split('\n').map(s=>s.trim()).filter(Boolean);const reason=lines.find(s=>/^(error:|adb:|java\.lang\.|Error:)/i.test(s)) || lines[0] || 'Command failed';throw new Error('ADB '+args[0]+': '+reason.slice(0,350));}
   }
   async devices() {
     const {stdout} = await exec(adb, ['devices', '-l'], {timeout: 10000});
@@ -38,11 +39,17 @@ export class Phone {
   }
   async apps() {
     const result = await this.run(['shell', 'pm', 'list', 'packages', '-3']);
-    return result.split('\n').filter(Boolean).map(p => p.replace('package:', '').trim()).sort();
+    const launchers=await this.run(['shell','cmd','package','query-activities','--components','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER']);
+    const launchable=new Set(launchers.split('\n').filter(line=>line.includes('/')).map(line=>line.trim().split('/')[0]));
+    return result.split('\n').filter(Boolean).map(p => p.replace('package:', '').trim()).filter(p=>launchable.has(p)).sort();
   }
   async launch(packageName) {
     if (!/^[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)+$/.test(packageName)) throw new Error('Invalid Android package name');
-    await this.run(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1']);
+    const resolved = await this.run(['shell','cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER',packageName]);
+    const component=resolved.split('\n').map(s=>s.trim()).find(s=>s.startsWith(packageName+'/'));
+    if(!component || !/^[a-zA-Z0-9_./$]+$/.test(component))throw new Error('This app has no launcher activity.');
+    // A new task prevents Android from resuming a deeply nested activity stack.
+    await this.run(['shell','am','start','-S','-n',component,'-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-f','0x10008000']);
   }
   async act(action, snapshot) {
     if (action.kind === 'tap') {

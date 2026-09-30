@@ -1,3 +1,8 @@
+export function rebindTarget(oldNode, currentNodes) {
+  if(!oldNode)return null;
+  const matches=currentNodes.filter(n=>n.package===oldNode.package && n.class===oldNode.class && n.resourceId===oldNode.resourceId && n.text===oldNode.text && n.description===oldNode.description && n.clickable===oldNode.clickable);
+  return matches.length===1 ? matches[0]:null;
+}
 export function assessAction(decision, node, mode, allowSend) {
   const label = [node?.text, node?.description, node?.resourceId].filter(Boolean).join(' ');
   const send = /(?:\bsend\b|\bodeslat\b|\bposlat\b|:id\/send(?:_|\b))/i.test(label);

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {flattenUI, Phone} from '../src/phone.mjs';
-import {assessAction} from '../src/policy.mjs';
+import {assessAction,rebindTarget} from '../src/policy.mjs';
 test('nested UI hierarchy retains semantic selectors and valid centers',()=>{
  const nodes=flattenUI({hierarchy:{node:{bounds:'[0,0][500,1000]',node:[{text:'Search',bounds:'[10,20][110,60]',clickable:'true','resource-id':'com.whatsapp:id/search'},{bounds:'[0,0][0,0]'}]}}});
  assert.equal(nodes.length,2);assert.deepEqual(nodes[1].center,[60,40]);assert.equal(nodes[1].resourceId,'com.whatsapp:id/search');assert.equal(nodes[1].clickable,true);
@@ -13,6 +13,15 @@ test('mapping and preview cannot press Send, explicit execution can',()=>{
 test('send authorization never authorizes calls or deletion',()=>{
  assert.equal(assessAction({kind:'tap',sensitive:false},{description:'Delete message'},'execute',true).allowed,false);
  assert.equal(assessAction({kind:'tap',sensitive:true},{description:'Start voice call'},'execute',true).allowed,false);
+});
+test('semantic rebinding ignores coordinates but refuses ambiguous or changed targets',()=>{
+ const old={id:'1',package:'com.whatsapp',class:'Button',resourceId:'id/search',text:'',description:'Search',clickable:true,center:[10,20]};
+ const moved={...old,id:'8',center:[30,40]};assert.equal(rebindTarget(old,[moved]).id,'8');
+ assert.equal(rebindTarget(old,[moved,{...moved,id:'9'}]),null);assert.equal(rebindTarget(old,[{...moved,description:'Send'}]),null);
+});
+test('fresh launch uses Android-supported NEW_TASK and CLEAR_TASK intent flags',async()=>{
+ const phone=new Phone('test');const calls=[];phone.run=async args=>{calls.push(args);return calls.length===1?'com.whatsapp/.Main\n':'';};await phone.launch('com.whatsapp');
+ assert.deepEqual(calls[1].slice(-2),['-f','0x10008000']);assert(calls[1].includes('-S'));assert(!calls[1].includes('--activity-new-task'));
 });
 test('text is quoted for the Android shell, without host command execution',async()=>{
  const phone=new Phone('test');let args;phone.run=async value=>{args=value;};
