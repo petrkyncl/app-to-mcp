@@ -59,7 +59,7 @@ export class AppCatalog {
     return {apps:this.apps.filter(a=>a.launchable!==false).sort((a,b)=>a.label.localeCompare(b.label)),loading:this.loading,error:this.error};
   }
   async loadLabels() {
-    this.loading=true;const aapt=await findAapt();const dir=path.join(this.root,'work','app-labels',this.phone.serial);await mkdir(dir,{recursive:true});
+    this.loading=true;const aapt=await findAapt();const dir=path.join(this.root,'work','app-labels',this.phone.serial || 'default');await mkdir(dir,{recursive:true});
     let cache={};try{cache=JSON.parse(await readFile(path.join(dir,'labels.json'),'utf8'));}catch{}
     // Prioritize the demo app; all other labels resolve in the background.
     const ordered=[...this.apps].sort((a,b)=>Number(b.packageName==='com.whatsapp')-Number(a.packageName==='com.whatsapp'));

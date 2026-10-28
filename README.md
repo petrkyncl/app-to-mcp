@@ -10,12 +10,12 @@ codex login
 npm start
 ```
 
-Open http://127.0.0.1:4318. This Mac already has an authenticated Codex CLI, ADB and Android SDK build-tools. USB debugging must be authorized on the phone. `scrcpy` is useful for manual control but is not required by the server.
+Open http://127.0.0.1:4318. You need an authenticated Codex CLI, ADB and Android SDK build-tools. USB debugging must be authorized on the phone. `scrcpy` is useful for manual control but is not required by the server.
 
 Environment options:
 
-- `ANDROID_SERIAL`: target from `adb devices -l` (current default is the connected demo phone).
-- `ADB`: path to ADB (current default is `/Users/Petr/Tools/platform-tools/adb`).
+- `ANDROID_SERIAL`: target from `adb devices -l`. Optional when only one device is connected.
+- `ADB`: path to ADB; defaults to `adb` on PATH.
 - `CODEX_BIN`: path to the authenticated Codex CLI; defaults to `codex` on PATH.
 - `AGENT_MODEL`: optional Codex model override; defaults to `gpt-6-luna` with low reasoning.
 - `AAPT2`: optional path to Android SDK aapt2; newest installed stable macOS build-tools is detected by default.

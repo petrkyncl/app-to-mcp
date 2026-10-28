@@ -3,7 +3,7 @@ import {promisify} from 'node:util';
 import {recognizeText,addVisualText} from './ocr.mjs';
 import {XMLParser} from 'fast-xml-parser';
 export const exec = promisify(execFile);
-const adb = process.env.ADB || '/Users/Petr/Tools/platform-tools/adb';
+const adb = process.env.ADB || 'adb';
 const parser = new XMLParser({ignoreAttributes: false, attributeNamePrefix: ''});
 export function flattenUI(parsed) {
   const nodes = [];
@@ -48,8 +48,10 @@ export function parseInputContext(value) {
 }
 export class Phone {
   constructor(serial) { this.serial = serial; }
+  // Without a serial, adb talks to the only connected device.
+  target() { return this.serial ? ['-s', this.serial] : []; }
   async run(args, options = {}) {
-    try {const {stdout} = await exec(adb, ['-s', this.serial, ...args], {timeout: 25000, maxBuffer: 25 * 1024 * 1024, ...options}); return stdout;}
+    try {const {stdout} = await exec(adb, [...this.target(), ...args], {timeout: 25000, maxBuffer: 25 * 1024 * 1024, ...options}); return stdout;}
     catch(error) {const lines=String(error.stderr || error.stdout || error.message).split('\n').map(s=>s.trim()).filter(Boolean);const reason=lines.find(s=>/^(error:|adb:|java\.lang\.|Error:)/i.test(s)) || lines[0] || 'Command failed';throw new Error('ADB '+args[0]+': '+reason.slice(0,350));}
   }
   async devices() {
